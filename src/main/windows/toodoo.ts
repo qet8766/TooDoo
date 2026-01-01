@@ -1,7 +1,7 @@
 import type { BrowserWindow as BrowserWindowType } from 'electron'
-import { createWindow, type WindowConfig } from './base'
+import { createSingletonWindowManager, createWindow, type WindowConfig } from './base'
 
-let tooDooOverlay: BrowserWindowType | null = null
+const overlayManager = createSingletonWindowManager()
 
 const config: WindowConfig = {
   type: 'overlay',
@@ -15,19 +15,11 @@ const config: WindowConfig = {
 }
 
 export const createTooDooOverlay = (): BrowserWindowType => {
-  if (tooDooOverlay) return tooDooOverlay
-
-  tooDooOverlay = createWindow(config)
-
-  tooDooOverlay.on('closed', () => {
-    tooDooOverlay = null
-  })
-
-  return tooDooOverlay
+  return overlayManager.create(() => createWindow(config))
 }
 
-export const getTooDooOverlay = (): BrowserWindowType | null => tooDooOverlay
+export const getTooDooOverlay = (): BrowserWindowType | null => overlayManager.get()
 
 export const closeTooDooOverlay = () => {
-  tooDooOverlay?.close()
+  overlayManager.close()
 }

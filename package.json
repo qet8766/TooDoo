@@ -2,6 +2,8 @@
   "name": "toodoo",
   "private": true,
   "version": "0.1.0",
+  "description": "Always-on-top todo overlay with global hotkey quick-add popups.",
+  "author": "TooDoo",
   "type": "module",
   "main": "dist-electron/main.mjs",
   "scripts": {
@@ -34,6 +36,10 @@
           "arch": ["x64"]
         }
       ]
+    },
+    "linux": {
+      "category": "Utility",
+      "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": false,

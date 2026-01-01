@@ -1,7 +1,7 @@
 import type { BrowserWindow as BrowserWindowType } from 'electron'
-import { createWindow, loadRoute, repositionWindow, type WindowConfig } from './base'
+import { createSingletonWindowManager, createWindow, loadRoute, repositionWindow, type WindowConfig } from './base'
 
-let quickAddWindow: BrowserWindowType | null = null
+const quickAddManager = createSingletonWindowManager()
 
 const config: WindowConfig = {
   type: 'popup',
@@ -16,25 +16,20 @@ export const createQuickAddWindow = (category: string): BrowserWindowType => {
   const categoryQuery = encodeURIComponent(category)
   const route = `/quick-add?category=${categoryQuery}`
 
-  if (quickAddWindow) {
-    loadRoute(quickAddWindow, route)
-    repositionWindow(quickAddWindow, config)
-    quickAddWindow.show()
-    quickAddWindow.focus()
-    return quickAddWindow
+  const existing = quickAddManager.get()
+  if (existing) {
+    loadRoute(existing, route)
+    repositionWindow(existing, config)
+    existing.show()
+    existing.focus()
+    return existing
   }
 
-  quickAddWindow = createWindow({ ...config, route })
-
-  quickAddWindow.on('closed', () => {
-    quickAddWindow = null
-  })
-
-  return quickAddWindow
+  return quickAddManager.create(() => createWindow({ ...config, route }))
 }
 
-export const getQuickAddWindow = (): BrowserWindowType | null => quickAddWindow
+export const getQuickAddWindow = (): BrowserWindowType | null => quickAddManager.get()
 
 export const closeQuickAddWindow = () => {
-  quickAddWindow?.close()
+  quickAddManager.close()
 }

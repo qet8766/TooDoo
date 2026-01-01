@@ -1,16 +1,11 @@
 import type { BrowserWindow as BrowserWindowType } from 'electron'
 import { BrowserWindow } from './electron'
+import { IPC } from '@shared/ipc'
 
-export const CHANNELS = {
-  TASKS_CHANGED: 'tasks:changed',
-} as const
-
-export type BroadcastChannel = (typeof CHANNELS)[keyof typeof CHANNELS]
-
-export const broadcast = <T>(channel: BroadcastChannel, payload?: T) => {
+export const broadcast = <T>(channel: string, payload?: T) => {
   BrowserWindow.getAllWindows().forEach((win: BrowserWindowType) => {
     win.webContents.send(channel, payload)
   })
 }
 
-export const broadcastTaskChange = () => broadcast(CHANNELS.TASKS_CHANGED)
+export const broadcastTaskChange = () => broadcast(IPC.TASKS_CHANGED)

@@ -115,23 +115,52 @@ let isOnline = false
 let syncInProgress = false
 let syncInterval: ReturnType<typeof setInterval> | null = null
 
-const generateId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+const generateId = () => crypto.randomUUID()
 
 const enqueueSync = (
   table: string,
   recordId: string,
   operation: 'create' | 'update' | 'delete',
   payload: object | null,
-) => {
+): string => {
   const s = ensureStore()
+  const id = generateId()
 
-  // Remove existing operations for this record (coalesce)
-  s.syncQueue = s.syncQueue.filter(
-    (item) => !(item.table === table && item.recordId === recordId),
+  // Find existing operation for this record
+  const existingIndex = s.syncQueue.findIndex(
+    (item) => item.table === table && item.recordId === recordId,
   )
 
+  if (existingIndex !== -1) {
+    const existing = s.syncQueue[existingIndex]
+
+    // Handle operation coalescing carefully to prevent data loss
+    if (existing.operation === 'create' && operation === 'delete') {
+      // If we're deleting something that was never synced (created offline),
+      // just remove the create operation - no need to sync anything
+      s.syncQueue.splice(existingIndex, 1)
+      saveStore()
+      console.info(`[TooDoo] Removed unsent create for ${table}:${recordId} (deleted before sync)`)
+      return id
+    }
+
+    if (existing.operation === 'create' && operation === 'update') {
+      // Merge update into create - keep it as a create with updated payload
+      s.syncQueue[existingIndex] = {
+        ...existing,
+        payload: { ...existing.payload, ...payload },
+      }
+      saveStore()
+      console.info(`[TooDoo] Merged update into pending create for ${table}:${recordId}`)
+      return existing.id
+    }
+
+    // For other cases, remove the old operation
+    s.syncQueue.splice(existingIndex, 1)
+  }
+
   s.syncQueue.push({
-    id: generateId(),
+    id,
     table,
     recordId,
     operation,
@@ -142,6 +171,7 @@ const enqueueSync = (
 
   saveStore()
   console.info(`[TooDoo] Queued ${operation} for ${table}:${recordId}`)
+  return id
 }
 
 const dequeueSync = (id: string) => {
@@ -157,6 +187,36 @@ const incrementRetryCount = (id: string) => {
     item.retryCount++
     saveStore()
   }
+}
+
+const tryImmediateSync = (queueId: string, request: { endpoint: string; method: string; body?: object }) => {
+  void apiFetch(request.endpoint, {
+    method: request.method,
+    body: request.body ? JSON.stringify(request.body) : undefined,
+  }).then(({ error }) => {
+    if (!error) {
+      dequeueSync(queueId)
+    }
+  })
+}
+
+// Helper: Update tasks cache and persist
+const updateTasksCache = (updater: (tasks: Task[]) => Task[]) => {
+  const s = ensureStore()
+  s.cache.tasks = updater(s.cache.tasks)
+  saveStore()
+}
+
+// Helper: Queue operation and attempt immediate sync
+const queueAndSync = (
+  table: string,
+  recordId: string,
+  operation: 'create' | 'update' | 'delete',
+  payload: object | null,
+  request: { endpoint: string; method: string; body?: object },
+) => {
+  const queueId = enqueueSync(table, recordId, operation, payload)
+  tryImmediateSync(queueId, request)
 }
 
 export const getSyncQueueCount = (): number => {
@@ -226,19 +286,21 @@ const processQueueItem = async (item: SyncQueueItem): Promise<boolean> => {
   return true
 }
 
-const syncFromServer = async () => {
+const syncFromServer = async (): Promise<boolean> => {
   const s = ensureStore()
 
   const tasksRes = await apiFetch<Task[]>('/api/tasks')
 
   if (tasksRes.data) {
     s.cache.tasks = tasksRes.data
+    s.cache.lastSyncAt = Date.now()
+    saveStore()
+    console.info(`[TooDoo] Synced from server - Tasks: ${tasksRes.data.length}`)
+    return true
   }
 
-  s.cache.lastSyncAt = Date.now()
-  saveStore()
-
-  console.info(`[TooDoo] Synced from server - Tasks: ${tasksRes.data?.length ?? 0}`)
+  console.warn('[TooDoo] Failed to sync from server:', tasksRes.error)
+  return false
 }
 
 const processSyncQueue = async () => {
@@ -313,11 +375,31 @@ export const getApiUrlSetting = (): string => {
   return ensureStore().settings.apiUrl
 }
 
-export const setApiUrlSetting = (url: string) => {
+const isValidUrl = (url: string): boolean => {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+export const setApiUrlSetting = (url: string): { success: boolean; error?: string } => {
+  const trimmed = url.trim()
+
+  if (!trimmed) {
+    return { success: false, error: 'URL cannot be empty' }
+  }
+
+  if (!isValidUrl(trimmed)) {
+    return { success: false, error: 'Invalid URL format. Must be a valid HTTP/HTTPS URL.' }
+  }
+
   const s = ensureStore()
-  s.settings.apiUrl = url
+  s.settings.apiUrl = trimmed
   saveStore()
   void processSyncQueue()
+  return { success: true }
 }
 
 // --- Tasks ---
@@ -346,9 +428,7 @@ export const addTask = (payload: {
   category: TaskCategory
   isDone?: boolean
 }): Task => {
-  const s = ensureStore()
   const now = Date.now()
-
   const task: Task = {
     id: payload.id,
     title: payload.title.trim(),
@@ -360,23 +440,8 @@ export const addTask = (payload: {
     isDeleted: false,
   }
 
-  // Update local cache
-  s.cache.tasks = [task, ...s.cache.tasks.filter((t) => t.id !== task.id)]
-  saveStore()
-
-  // Queue for sync
-  enqueueSync('tasks', task.id, 'create', task)
-
-  // Try immediate push
-  void apiFetch('/api/tasks', {
-    method: 'POST',
-    body: JSON.stringify(task),
-  }).then(({ error }) => {
-    if (!error) {
-      dequeueSync(s.syncQueue.find((i) => i.recordId === task.id)?.id || '')
-    }
-  })
-
+  updateTasksCache(tasks => [task, ...tasks.filter(t => t.id !== task.id)])
+  queueAndSync('tasks', task.id, 'create', task, { endpoint: '/api/tasks', method: 'POST', body: task })
   return task
 }
 
@@ -387,8 +452,7 @@ export const updateTask = (payload: {
   isDone?: boolean
   category?: TaskCategory
 }): Task | null => {
-  const s = ensureStore()
-  const existing = s.cache.tasks.find((t) => t.id === payload.id)
+  const existing = ensureStore().cache.tasks.find(t => t.id === payload.id)
   if (!existing) return null
 
   const updated: Task = {
@@ -400,50 +464,20 @@ export const updateTask = (payload: {
     updatedAt: Date.now(),
   }
 
-  // Update local cache
-  s.cache.tasks = s.cache.tasks.map((t) => (t.id === updated.id ? updated : t))
-  saveStore()
-
-  // Queue for sync
-  enqueueSync('tasks', updated.id, 'update', updated)
-
-  // Try immediate push
-  void apiFetch(`/api/tasks/${updated.id}`, {
-    method: 'PUT',
-    body: JSON.stringify(updated),
-  }).then(({ error }) => {
-    if (!error) {
-      dequeueSync(s.syncQueue.find((i) => i.recordId === updated.id)?.id || '')
-    }
-  })
-
+  updateTasksCache(tasks => tasks.map(t => t.id === updated.id ? updated : t))
+  queueAndSync('tasks', updated.id, 'update', updated, { endpoint: `/api/tasks/${updated.id}`, method: 'PUT', body: updated })
   return updated
 }
 
 export const deleteTask = (id: string) => {
-  const s = ensureStore()
-
-  // Update local cache
-  s.cache.tasks = s.cache.tasks.filter((t) => t.id !== id)
-  saveStore()
-
-  // Queue for sync
-  enqueueSync('tasks', id, 'delete', null)
-
-  // Try immediate push
-  void apiFetch(`/api/tasks/${id}`, { method: 'DELETE' }).then(({ error }) => {
-    if (!error) {
-      dequeueSync(s.syncQueue.find((i) => i.recordId === id)?.id || '')
-    }
-  })
+  updateTasksCache(tasks => tasks.filter(t => t.id !== id))
+  queueAndSync('tasks', id, 'delete', null, { endpoint: `/api/tasks/${id}`, method: 'DELETE' })
 }
 
 // --- Project Notes ---
 
 export const addProjectNote = (payload: { id: string; taskId: string; content: string }): ProjectNote => {
-  const s = ensureStore()
   const now = Date.now()
-
   const note: ProjectNote = {
     id: payload.id,
     taskId: payload.taskId,
@@ -453,56 +487,20 @@ export const addProjectNote = (payload: { id: string; taskId: string; content: s
     isDeleted: false,
   }
 
-  // Update local cache - add to task's projectNotes
-  s.cache.tasks = s.cache.tasks.map((t) => {
-    if (t.id === payload.taskId) {
-      return {
-        ...t,
-        projectNotes: [...(t.projectNotes || []), note],
-      }
-    }
-    return t
-  })
-  saveStore()
-
-  // Queue for sync
-  enqueueSync('project_notes', note.id, 'create', note)
-
-  // Try immediate push
-  void apiFetch(`/api/tasks/${payload.taskId}/notes`, {
+  updateTasksCache(tasks => tasks.map(t =>
+    t.id === payload.taskId ? { ...t, projectNotes: [...(t.projectNotes || []), note] } : t
+  ))
+  queueAndSync('project_notes', note.id, 'create', note, {
+    endpoint: `/api/tasks/${payload.taskId}/notes`,
     method: 'POST',
-    body: JSON.stringify({ id: note.id, content: note.content }),
-  }).then(({ error }) => {
-    if (!error) {
-      dequeueSync(s.syncQueue.find((i) => i.recordId === note.id)?.id || '')
-    }
+    body: { id: note.id, content: note.content },
   })
-
   return note
 }
 
 export const deleteProjectNote = (id: string) => {
-  const s = ensureStore()
-
-  // Update local cache - remove from task's projectNotes
-  s.cache.tasks = s.cache.tasks.map((t) => {
-    if (t.projectNotes) {
-      return {
-        ...t,
-        projectNotes: t.projectNotes.filter((n) => n.id !== id),
-      }
-    }
-    return t
-  })
-  saveStore()
-
-  // Queue for sync
-  enqueueSync('project_notes', id, 'delete', null)
-
-  // Try immediate push
-  void apiFetch(`/api/tasks/notes/${id}`, { method: 'DELETE' }).then(({ error }) => {
-    if (!error) {
-      dequeueSync(s.syncQueue.find((i) => i.recordId === id)?.id || '')
-    }
-  })
+  updateTasksCache(tasks => tasks.map(t =>
+    t.projectNotes ? { ...t, projectNotes: t.projectNotes.filter(n => n.id !== id) } : t
+  ))
+  queueAndSync('project_notes', id, 'delete', null, { endpoint: `/api/tasks/notes/${id}`, method: 'DELETE' })
 }

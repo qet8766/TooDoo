@@ -30,6 +30,27 @@ export const configureRendererTarget = (target: RendererTarget) => {
 
 export const getPreloadPath = () => path.join(app.getAppPath(), 'dist-electron', 'preload.cjs')
 
+export const createSingletonWindowManager = () => {
+  let win: BrowserWindowType | null = null
+
+  const get = () => win
+
+  const create = (factory: () => BrowserWindowType) => {
+    if (win) return win
+    win = factory()
+    win.on('closed', () => {
+      win = null
+    })
+    return win
+  }
+
+  const close = () => {
+    win?.close()
+  }
+
+  return { get, create, close }
+}
+
 export const loadRoute = (win: BrowserWindowType, hashPath: string) => {
   if (!rendererTarget) throw new Error('Renderer target not configured')
   const route = hashPath.startsWith('/') ? hashPath : `/${hashPath}`

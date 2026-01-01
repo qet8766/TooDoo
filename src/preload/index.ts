@@ -1,36 +1,37 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { ProjectNote, Task } from '@shared/types'
+import { IPC, type ProjectNoteCreatePayload, type TaskCreatePayload, type TaskUpdatePayload } from '@shared/ipc'
 
 // Tasks API
 const tasksApi = {
-  list: () => ipcRenderer.invoke('tasks:list') as Promise<Task[]>,
-  add: (payload: { id: string; title: string; description?: string; category: string; isDone?: boolean }) =>
-    ipcRenderer.invoke('tasks:add', payload) as Promise<Task>,
-  update: (payload: { id: string; title?: string; description?: string | null; isDone?: boolean; category?: string }) =>
-    ipcRenderer.invoke('tasks:update', payload) as Promise<Task | null>,
-  remove: (id: string) => ipcRenderer.invoke('tasks:delete', id) as Promise<{ id: string }>,
-  addNote: (payload: { id: string; taskId: string; content: string }) =>
-    ipcRenderer.invoke('tasks:note:add', payload) as Promise<ProjectNote>,
-  removeNote: (id: string) => ipcRenderer.invoke('tasks:note:delete', id) as Promise<{ id: string }>,
+  list: () => ipcRenderer.invoke(IPC.TASKS_LIST) as Promise<Task[]>,
+  add: (payload: TaskCreatePayload) => ipcRenderer.invoke(IPC.TASKS_ADD, payload) as Promise<Task>,
+  update: (payload: TaskUpdatePayload) => ipcRenderer.invoke(IPC.TASKS_UPDATE, payload) as Promise<Task | null>,
+  remove: (id: string) => ipcRenderer.invoke(IPC.TASKS_DELETE, id) as Promise<{ id: string }>,
+  addNote: (payload: ProjectNoteCreatePayload) => ipcRenderer.invoke(IPC.TASKS_NOTE_ADD, payload) as Promise<ProjectNote>,
+  removeNote: (id: string) => ipcRenderer.invoke(IPC.TASKS_NOTE_DELETE, id) as Promise<{ id: string }>,
 }
 
 // Settings API
 const settingsApi = {
-  getApiUrl: () => ipcRenderer.invoke('settings:api-url:get') as Promise<string>,
-  setApiUrl: (url: string) => ipcRenderer.invoke('settings:api-url:set', url) as Promise<void>,
+  getApiUrl: () => ipcRenderer.invoke(IPC.SETTINGS_API_URL_GET) as Promise<string>,
+  setApiUrl: (url: string) => ipcRenderer.invoke(IPC.SETTINGS_API_URL_SET, url) as Promise<{ success: boolean; error?: string }>,
   getSyncStatus: () =>
-    ipcRenderer.invoke('settings:sync-status') as Promise<{ isOnline: boolean; pendingCount: number; lastSyncAt: number }>,
-  triggerSync: () => ipcRenderer.invoke('settings:trigger-sync') as Promise<void>,
+    ipcRenderer.invoke(IPC.SETTINGS_SYNC_STATUS) as Promise<{ isOnline: boolean; pendingCount: number; lastSyncAt: number }>,
+  triggerSync: () => ipcRenderer.invoke(IPC.SETTINGS_TRIGGER_SYNC) as Promise<void>,
 }
 
 // IPC Event Listeners
-const onTasksChanged = (callback: () => void) => {
-  ipcRenderer.removeAllListeners('tasks:changed')
-  ipcRenderer.on('tasks:changed', callback)
+const onTasksChanged = (callback: () => void): (() => void) => {
+  ipcRenderer.on(IPC.TASKS_CHANGED, callback)
+  // Return unsubscribe function for proper cleanup
+  return () => {
+    ipcRenderer.removeListener(IPC.TASKS_CHANGED, callback)
+  }
 }
 
 // Toggle overlay
-const toggleOverlay = (isActive: boolean) => ipcRenderer.send('toggle-overlay', isActive)
+const toggleOverlay = (isActive: boolean) => ipcRenderer.send(IPC.TOGGLE_OVERLAY, isActive)
 
 // Exposed API
 const api = {
@@ -39,5 +40,7 @@ const api = {
   settings: settingsApi,
   toggleOverlay,
 }
+
+export type ToodooAPI = typeof api
 
 contextBridge.exposeInMainWorld('toodoo', api)

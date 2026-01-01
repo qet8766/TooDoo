@@ -45,7 +45,6 @@ const resolveDevServerPort = async (): Promise<number> => {
     3001,
   ]
   for (const port of candidates) {
-    // eslint-disable-next-line no-await-in-loop
     if (await canListen(DEV_SERVER_HOST, port)) return port
   }
   return DEFAULT_DEV_SERVER_PORT

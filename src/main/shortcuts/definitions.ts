@@ -1,43 +1,18 @@
 import type { TaskCategory } from '@shared/types'
 
-export type ShortcutId =
-  | 'toodoo:short_term'
-  | 'toodoo:long_term'
-  | 'toodoo:project'
-  | 'toodoo:immediate'
+type ShortcutConfig = { accelerator: string; description: string; category: TaskCategory }
 
-export type ShortcutDefinition = {
-  id: ShortcutId
-  accelerator: string
-  description: string
-}
+const SHORTCUT_CONFIGS = {
+  'toodoo:short_term': { accelerator: 'Alt+Shift+S', description: 'Add short-term task', category: 'short_term' },
+  'toodoo:long_term': { accelerator: 'Alt+Shift+L', description: 'Add long-term task', category: 'long_term' },
+  'toodoo:project': { accelerator: 'Alt+Shift+P', description: 'Add project task', category: 'project' },
+  'toodoo:immediate': { accelerator: 'Alt+Shift+I', description: 'Add immediate task', category: 'immediate' },
+} as const satisfies Record<string, ShortcutConfig>
 
-export const SHORTCUTS: Record<ShortcutId, ShortcutDefinition> = {
-  'toodoo:short_term': {
-    id: 'toodoo:short_term',
-    accelerator: 'Alt+Shift+S',
-    description: 'Add short-term task',
-  },
-  'toodoo:long_term': {
-    id: 'toodoo:long_term',
-    accelerator: 'Alt+Shift+L',
-    description: 'Add long-term task',
-  },
-  'toodoo:project': {
-    id: 'toodoo:project',
-    accelerator: 'Alt+Shift+P',
-    description: 'Add project task',
-  },
-  'toodoo:immediate': {
-    id: 'toodoo:immediate',
-    accelerator: 'Alt+Shift+I',
-    description: 'Add immediate task',
-  },
-}
+export type ShortcutId = keyof typeof SHORTCUT_CONFIGS
+export type ShortcutDefinition = ShortcutConfig & { id: ShortcutId }
 
-export const TOODOO_CATEGORY_SHORTCUTS: Record<string, TaskCategory> = {
-  'Alt+Shift+S': 'short_term',
-  'Alt+Shift+L': 'long_term',
-  'Alt+Shift+P': 'project',
-  'Alt+Shift+I': 'immediate',
-}
+// Build full definitions with id derived from key
+export const SHORTCUTS = Object.fromEntries(
+  Object.entries(SHORTCUT_CONFIGS).map(([id, config]) => [id, { id, ...config }]),
+) as Record<ShortcutId, ShortcutDefinition>

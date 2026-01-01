@@ -1,16 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react'
 import type { ProjectNote, Task, TaskCategory } from '@shared/types'
+import { CATEGORIES, NORMAL_CATEGORIES } from '@shared/categories'
 
 const FONT_SIZE_KEY = 'toodoo-font-size'
 const DEFAULT_FONT_SIZE = 14
-
-const normalCategories: { key: TaskCategory; tone: 'cyan' | 'amber' | 'violet' | 'crimson' }[] = [
-  { key: 'short_term', tone: 'cyan' },
-  { key: 'long_term', tone: 'amber' },
-  { key: 'project', tone: 'violet' },
-]
-
-const immediateCategory = { key: 'immediate', tone: 'crimson' } as const
 
 const TooDooOverlay = () => {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -37,8 +30,11 @@ const TooDooOverlay = () => {
   }, [])
 
   useEffect(() => {
-    fetchTasks()
-    window.toodoo.onTasksChanged(fetchTasks)
+    // Subscribe to task changes and fetch initial data
+    const unsubscribe = window.toodoo.onTasksChanged(fetchTasks)
+    // Schedule initial fetch asynchronously to avoid synchronous setState in effect
+    queueMicrotask(fetchTasks)
+    return unsubscribe
   }, [fetchTasks])
 
   const tasksByCategory = useMemo(() => {
@@ -48,7 +44,7 @@ const TooDooOverlay = () => {
   }, [tasks])
 
   const isImmediateMode = tasksByCategory.immediate.length > 0
-  const visibleCategories = isImmediateMode ? [immediateCategory] : normalCategories
+  const visibleCategories = isImmediateMode ? [CATEGORIES.immediate] : NORMAL_CATEGORIES.map(k => CATEGORIES[k])
 
   const handleDragStart = (taskId: string) => (e: DragEvent<HTMLDivElement>) => {
     setDraggingTaskId(taskId)
@@ -92,6 +88,11 @@ const TooDooOverlay = () => {
     setTasks((prev) => prev.filter((item) => item.id !== taskId))
   }
 
+  const toggleDone = async (task: Task) => {
+    const updated = await window.toodoo.tasks.update({ id: task.id, isDone: !task.isDone })
+    if (updated) setTasks((prev) => prev.map((item) => (item.id === task.id ? updated : item)))
+  }
+
   const addNote = async (taskId: string, content: string) => {
     const trimmed = content.trim()
     if (!trimmed) return
@@ -110,12 +111,6 @@ const TooDooOverlay = () => {
   const deleteNote = async (taskId: string, noteId: string) => {
     await window.toodoo.tasks.removeNote(noteId)
     setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, projectNotes: (t.projectNotes ?? []).filter((n) => n.id !== noteId) } : t))
-  }
-
-  // Pure deletion logic on double click
-  const handleCheckboxClick = (taskId: string) => (e: MouseEvent) => {
-    e.preventDefault()
-    if (e.detail >= 2) void removeTask(taskId)
   }
 
   return (
@@ -151,8 +146,12 @@ const TooDooOverlay = () => {
                       onDragEnd={() => setDraggingTaskId(null)}
                     >
                       <div className="task-card-header">
-                        <label className="checkbox" onClick={handleCheckboxClick(task.id)}>
-                          <input type="checkbox" />
+                        <label className="checkbox" onDoubleClick={() => removeTask(task.id)}>
+                          <input
+                            type="checkbox"
+                            checked={task.isDone}
+                            onChange={() => toggleDone(task)}
+                          />
                           <span />
                         </label>
                         {form ? (
@@ -182,7 +181,10 @@ const TooDooOverlay = () => {
                           <div className="notes-list">
                             {(task.projectNotes ?? []).map((n) => (
                               <div key={n.id} className="note-row">
-                                <label className="checkbox" onClick={(e) => { e.preventDefault(); if (e.detail >= 2) deleteNote(task.id, n.id) }}><input type="checkbox" /><span /></label>
+                                <label className="checkbox" onDoubleClick={() => deleteNote(task.id, n.id)}>
+                                  <input type="checkbox" readOnly />
+                                  <span />
+                                </label>
                                 <p>{n.content}</p>
                               </div>
                             ))}

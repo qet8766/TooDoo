@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron'
+import type { IpcMainEvent } from 'electron'
 import {
   addProjectNote,
   addTask,
@@ -14,34 +14,28 @@ import {
   triggerSync,
 } from './db/database'
 import { app, BrowserWindow, ipcMain } from './electron'
-import type { TaskCategory } from '@shared/types'
+import { IPC } from '@shared/ipc'
 import {
   configureRendererTarget,
   createTooDooOverlay,
   closeTooDooOverlay,
   createQuickAddWindow,
 } from './windows'
-import { registerShortcut, unregisterShortcut, TOODOO_CATEGORY_SHORTCUTS } from './shortcuts'
-import { broadcastTaskChange } from './broadcast'
+import { registerShortcut, unregisterShortcut, SHORTCUTS } from './shortcuts'
+import { handleWithBroadcast, handleSimple } from './ipc-factory'
 
 const devServerUrl =
   process.env.VITE_DEV_SERVER_URL || process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL || 'http://localhost:5173/'
 
 const indexHtml = path.join(app.getAppPath(), 'dist', 'index.html')
 
-const registerQuickAddShortcuts = () => {
-  for (const [_accelerator, category] of Object.entries(TOODOO_CATEGORY_SHORTCUTS)) {
-    const shortcutId = `toodoo:${category}` as const
-    registerShortcut(shortcutId, () => {
-      createQuickAddWindow(category)
-    })
-  }
-}
-
-const unregisterQuickAddShortcuts = () => {
-  for (const [_accelerator, category] of Object.entries(TOODOO_CATEGORY_SHORTCUTS)) {
-    const shortcutId = `toodoo:${category}` as const
-    unregisterShortcut(shortcutId)
+const manageShortcuts = (mode: 'register' | 'unregister') => {
+  for (const shortcut of Object.values(SHORTCUTS)) {
+    if (mode === 'register') {
+      registerShortcut(shortcut.id, () => { createQuickAddWindow(shortcut.category) })
+    } else {
+      unregisterShortcut(shortcut.id)
+    }
   }
 }
 
@@ -49,7 +43,7 @@ const bootstrap = async () => {
   initDatabase()
   configureRendererTarget({ devServerUrl, indexHtml })
   createTooDooOverlay()
-  registerQuickAddShortcuts()
+  manageShortcuts('register')
 }
 
 app.whenReady().then(bootstrap)
@@ -57,77 +51,40 @@ app.whenReady().then(bootstrap)
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createTooDooOverlay()
-    registerQuickAddShortcuts()
+    manageShortcuts('register')
   }
 })
 
 app.on('window-all-closed', () => {
-  unregisterQuickAddShortcuts()
+  manageShortcuts('unregister')
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
 // Toggle overlay visibility
-ipcMain.on('toggle-overlay', (_event: IpcMainEvent, isActive: boolean) => {
-  isActive ? createTooDooOverlay() : closeTooDooOverlay()
+ipcMain.on(IPC.TOGGLE_OVERLAY, (_event: IpcMainEvent, isActive: boolean) => {
+  if (isActive) {
+    createTooDooOverlay()
+  } else {
+    closeTooDooOverlay()
+  }
 })
 
 // --- Task Handlers ---
-ipcMain.handle('tasks:list', (_event: IpcMainInvokeEvent) => getTasks())
+handleSimple(IPC.TASKS_LIST, getTasks)
+handleWithBroadcast(IPC.TASKS_ADD, addTask)
+handleWithBroadcast(IPC.TASKS_UPDATE, updateTask)
+handleWithBroadcast(IPC.TASKS_DELETE, (id: string) => { deleteTask(id); return { id } })
+handleWithBroadcast(IPC.TASKS_NOTE_ADD, addProjectNote)
+handleWithBroadcast(IPC.TASKS_NOTE_DELETE, (id: string) => { deleteProjectNote(id); return { id } })
 
-ipcMain.handle(
-  'tasks:add',
-  (
-    _event: IpcMainInvokeEvent,
-    payload: { id: string; title: string; description?: string; category: TaskCategory; isDone?: boolean },
-  ) => {
-    const task = addTask(payload)
-    broadcastTaskChange()
-    return task
-  },
-)
-
-ipcMain.handle(
-  'tasks:update',
-  (_event: IpcMainInvokeEvent, payload: { id: string; title?: string; description?: string | null; isDone?: boolean; category?: TaskCategory }) => {
-    const task = updateTask(payload)
-    broadcastTaskChange()
-    return task
-  },
-)
-
-ipcMain.handle('tasks:delete', (_event: IpcMainInvokeEvent, id: string) => {
-  deleteTask(id)
-  broadcastTaskChange()
-  return { id }
-})
-
-ipcMain.handle('tasks:note:add', (_event: IpcMainInvokeEvent, payload: { id: string; taskId: string; content: string }) => {
-  const note = addProjectNote(payload)
-  broadcastTaskChange()
-  return note
-})
-
-ipcMain.handle('tasks:note:delete', (_event: IpcMainInvokeEvent, id: string) => {
-  deleteProjectNote(id)
-  broadcastTaskChange()
-  return { id }
-})
-
-ipcMain.on('quick-add:open', (_event: IpcMainEvent, category: string) => {
+ipcMain.on(IPC.QUICK_ADD_OPEN, (_event: IpcMainEvent, category: string) => {
   createQuickAddWindow(category)
 })
 
 // --- Settings Handlers ---
-ipcMain.handle('settings:api-url:get', (_event: IpcMainInvokeEvent) => getApiUrlSetting())
-
-ipcMain.handle('settings:api-url:set', (_event: IpcMainInvokeEvent, url: string) => {
-  setApiUrlSetting(url)
-})
-
-ipcMain.handle('settings:sync-status', (_event: IpcMainInvokeEvent) => getSyncStatus())
-
-ipcMain.handle('settings:trigger-sync', (_event: IpcMainInvokeEvent) => {
-  triggerSync()
-})
+handleSimple(IPC.SETTINGS_API_URL_GET, getApiUrlSetting)
+handleSimple(IPC.SETTINGS_API_URL_SET, setApiUrlSetting)
+handleSimple(IPC.SETTINGS_SYNC_STATUS, getSyncStatus)
+handleSimple(IPC.SETTINGS_TRIGGER_SYNC, triggerSync)

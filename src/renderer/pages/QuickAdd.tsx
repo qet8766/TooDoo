@@ -1,13 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useLocation } from 'react-router-dom'
 import type { Task, TaskCategory } from '@shared/types'
-
-const categoryTitles: Record<TaskCategory, string> = {
-  short_term: 'Short-term',
-  long_term: 'Long-term',
-  project: 'Project',
-  immediate: 'Immediate',
-}
+import { CATEGORIES } from '@shared/categories'
 
 const QuickAdd = () => {
   const location = useLocation()
@@ -16,15 +10,7 @@ const QuickAdd = () => {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [status, setStatus] = useState('')
-  const inputRef = useRef<HTMLInputElement | null>(null)
   const formRef = useRef<HTMLFormElement | null>(null)
-
-  useEffect(() => {
-    setTitle('')
-    setDescription('')
-    setStatus('')
-    inputRef.current?.focus()
-  }, [category])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -64,7 +50,7 @@ const QuickAdd = () => {
       <div className="quick-add-header">
         <div>
           <p className="muted">Quick add</p>
-          <h3>{categoryTitles[category]} task</h3>
+          <h3>{CATEGORIES[category].title} task</h3>
         </div>
         <button className="small-button" type="button" onClick={() => window.close()}>
           Close
@@ -73,7 +59,7 @@ const QuickAdd = () => {
 
       <form ref={formRef} className="input-stack" onSubmit={handleSubmit}>
         <input
-          ref={inputRef}
+          autoFocus
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Title"
@@ -88,7 +74,7 @@ const QuickAdd = () => {
           onKeyDown={handleTextareaKeyDown}
         />
         <button className="button" type="submit">
-          Add {categoryTitles[category]}
+          Add {CATEGORIES[category].title}
         </button>
       </form>
 
