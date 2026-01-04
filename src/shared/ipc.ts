@@ -38,6 +38,8 @@ export const IPC = {
   NOTE_EDITOR_CLOSE: 'note-editor:close',
   SWITCH_VIEW: 'switch-view',
   WINDOW_SET_MINIMIZED: 'window:set-minimized',
+  WINDOW_SET_CALENDAR_OPEN: 'window:set-calendar-open',
+  WINDOW_RESIZE: 'window:resize',
 } as const
 
 export type TaskCreatePayload = {
@@ -46,6 +48,9 @@ export type TaskCreatePayload = {
   description?: string
   category: TaskCategory
   isDone?: boolean
+  // Calendar scheduling fields
+  scheduledDate?: number      // Unix timestamp for scheduled date
+  scheduledTime?: string      // "HH:MM" format, optional
 }
 
 export type TaskUpdatePayload = {
@@ -54,6 +59,11 @@ export type TaskUpdatePayload = {
   description?: string | null
   isDone?: boolean
   category?: TaskCategory
+  // Calendar scheduling fields (null to clear)
+  scheduledDate?: number | null
+  scheduledTime?: string | null
+  // Set to true when user manually changes category (prevents auto-demotion)
+  userPromoted?: boolean
 }
 
 export type ProjectNoteCreatePayload = {

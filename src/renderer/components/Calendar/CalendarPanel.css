@@ -1,0 +1,72 @@
+.calendar-panel {
+  width: 240px;
+  flex-shrink: 0;
+  background: rgba(13, 17, 23, 0.95);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.calendar-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9db4c0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.calendar-close-btn {
+  background: none;
+  border: none;
+  color: #9db4c0;
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 18px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.calendar-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e9eef5;
+}
+
+/* Collapsed toggle button */
+.calendar-toggle-btn {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(13, 17, 23, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  color: #9db4c0;
+  padding: 10px 6px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transition: all 0.15s;
+  z-index: 5;
+}
+
+.calendar-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e9eef5;
+}
+
+.toggle-icon {
+  letter-spacing: 1px;
+}

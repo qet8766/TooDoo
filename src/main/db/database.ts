@@ -3,6 +3,7 @@ import path from 'node:path'
 import { app } from '../electron'
 import type { Note, ProjectNote, Task, TaskCategory } from '@shared/types'
 import { ALL_CATEGORIES } from '@shared/categories'
+import { calculateEffectiveCategory, getTasksNeedingUpdate } from '@shared/category-calculator'
 import {
   getNasPath,
   getNasStorePath,
@@ -561,17 +562,38 @@ export const getTasks = async (): Promise<Task[]> => {
   return ensureCache().tasks
 }
 
-export const addTask = (p: { id: string; title: string; description?: string; category: TaskCategory; isDone?: boolean }): Task | { error: string } => {
+export const addTask = (p: {
+  id: string
+  title: string
+  description?: string
+  category: TaskCategory
+  isDone?: boolean
+  scheduledDate?: number
+  scheduledTime?: string
+}): Task | { error: string } => {
   const err = validateTask(p)
   if (err) return { error: err }
 
   const now = Date.now()
+
+  // Calculate effective category for scheduled tasks (project tasks excluded)
+  let effectiveCategory = p.category
+  let baseCategory: TaskCategory | undefined = undefined
+
+  if (p.scheduledDate && p.category !== 'project') {
+    baseCategory = p.category
+    effectiveCategory = calculateEffectiveCategory(p.scheduledDate, p.scheduledTime, now)
+  }
+
   // New tasks get sortOrder 0 (top of list), existing tasks shift down
   const task: Task = {
     id: p.id,
     title: p.title.trim(),
     description: p.description?.trim(),
-    category: p.category,
+    category: effectiveCategory,
+    baseCategory,
+    scheduledDate: p.scheduledDate,
+    scheduledTime: p.scheduledTime,
     isDone: p.isDone ?? false,
     createdAt: now,
     updatedAt: now,
@@ -594,22 +616,71 @@ export const addTask = (p: { id: string; title: string; description?: string; ca
   return task
 }
 
-export const updateTask = (p: { id: string; title?: string; description?: string | null; isDone?: boolean; category?: TaskCategory }): Task | null | { error: string } => {
+export const updateTask = (p: {
+  id: string
+  title?: string
+  description?: string | null
+  isDone?: boolean
+  category?: TaskCategory
+  scheduledDate?: number | null
+  scheduledTime?: string | null
+  userPromoted?: boolean
+}): Task | null | { error: string } => {
   const err = validateTask(p)
   if (err) return { error: err }
 
   const existing = ensureCache().tasks.find(t => t.id === p.id)
   if (!existing) return null
 
-  const categoryChanged = p.category && p.category !== existing.category
+  const now = Date.now()
+
+  // Handle scheduling field updates
+  const newScheduledDate = p.scheduledDate === null ? undefined : (p.scheduledDate ?? existing.scheduledDate)
+  const newScheduledTime = p.scheduledTime === null ? undefined : (p.scheduledTime ?? existing.scheduledTime)
+
+  // Determine base category
+  let newBaseCategory = existing.baseCategory
+  if (p.category !== undefined) {
+    // User is explicitly changing the category
+    if (newScheduledDate && p.category !== 'project') {
+      newBaseCategory = p.category
+    } else if (!newScheduledDate) {
+      newBaseCategory = undefined
+    }
+  } else if (p.scheduledDate !== undefined) {
+    // Scheduling is being added/removed
+    if (newScheduledDate && existing.category !== 'project') {
+      newBaseCategory = existing.baseCategory ?? existing.category
+    } else if (!newScheduledDate) {
+      newBaseCategory = undefined
+    }
+  }
+
+  // Calculate effective category
+  let effectiveCategory = p.category ?? existing.category
+  if (newScheduledDate && effectiveCategory !== 'project') {
+    effectiveCategory = calculateEffectiveCategory(newScheduledDate, newScheduledTime, now)
+  } else if (!newScheduledDate && existing.baseCategory) {
+    // Schedule removed - revert to base category
+    effectiveCategory = existing.baseCategory
+  }
+
+  const categoryChanged = effectiveCategory !== existing.category
+
+  // If user explicitly promoted (via drag-drop), set the flag
+  const newUserPromoted = p.userPromoted ?? existing.userPromoted
 
   const updated: Task = {
     ...existing,
     title: p.title !== undefined ? p.title.trim() : existing.title,
     description: p.description === null ? undefined : (p.description?.trim() ?? existing.description),
-    category: p.category ?? existing.category,
+    category: effectiveCategory,
+    baseCategory: newBaseCategory,
+    scheduledDate: newScheduledDate,
+    scheduledTime: newScheduledTime,
+    userPromoted: newUserPromoted,
     isDone: p.isDone ?? existing.isDone,
-    updatedAt: Date.now(),
+    updatedAt: now,
     sortOrder: categoryChanged ? 0 : (existing.sortOrder ?? 0), // Move to top if category changed
   }
 
@@ -826,4 +897,75 @@ export const reinitializeWithNas = () => {
   if (getNasPath()) {
     startSyncScheduler()
   }
+}
+
+// --- Scheduled Task Category Recalculation ---
+
+/**
+ * Recalculate categories for all scheduled tasks based on current time.
+ * Returns the number of tasks that were updated.
+ */
+export const recalculateScheduledCategories = (): number => {
+  const c = ensureCache()
+  const now = Date.now()
+
+  // Find tasks that need category updates
+  const tasksNeedingUpdate = getTasksNeedingUpdate(c.tasks, now)
+
+  if (tasksNeedingUpdate.length === 0) return 0
+
+  const updatedIds = new Set<string>()
+
+  updateTasksCache(tasks => tasks.map(task => {
+    // Skip if not in our update list
+    if (!tasksNeedingUpdate.find(t => t.id === task.id)) return task
+
+    const newCategory = calculateEffectiveCategory(
+      task.scheduledDate!,
+      task.scheduledTime,
+      now
+    )
+
+    // Check if category actually changed (handles edge cases)
+    if (newCategory === task.category) return task
+
+    updatedIds.add(task.id)
+
+    // Move to top of new category
+    return {
+      ...task,
+      category: newCategory,
+      updatedAt: now,
+      sortOrder: 0,
+    }
+  }))
+
+  // Shift sortOrder for tasks in affected categories
+  if (updatedIds.size > 0) {
+    updateTasksCache(tasks => {
+      // Group tasks by category
+      const byCategory = new Map<TaskCategory, Task[]>()
+      for (const task of tasks) {
+        if (!byCategory.has(task.category)) byCategory.set(task.category, [])
+        byCategory.get(task.category)!.push(task)
+      }
+
+      // Sort each category and reassign sortOrder
+      return tasks.map(task => {
+        const categoryTasks = byCategory.get(task.category) ?? []
+        const sorted = [...categoryTasks].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        const newSortOrder = sorted.findIndex(t => t.id === task.id)
+        return { ...task, sortOrder: newSortOrder >= 0 ? newSortOrder : task.sortOrder }
+      })
+    })
+
+    // Mark updated tasks for sync
+    for (const id of updatedIds) {
+      addPendingChange('tasks', id, 'update')
+    }
+
+    debouncedSync()
+  }
+
+  return updatedIds.size
 }

@@ -89,6 +89,12 @@ const switchView = (view: 'toodoo' | 'notetank') => ipcRenderer.send(IPC.SWITCH_
 // Focus mode - minimize/expand overlay window
 const setMinimized = (isMinimized: boolean) => ipcRenderer.send(IPC.WINDOW_SET_MINIMIZED, isMinimized)
 
+// Calendar open - expand/contract window width
+const setCalendarOpen = (isOpen: boolean) => ipcRenderer.send(IPC.WINDOW_SET_CALENDAR_OPEN, isOpen)
+
+// Window resize - for custom resize handles
+const resizeWindow = (deltaWidth: number, deltaHeight: number) => ipcRenderer.send(IPC.WINDOW_RESIZE, deltaWidth, deltaHeight)
+
 // Exposed API
 const api = {
   tasks: tasksApi,
@@ -98,6 +104,8 @@ const api = {
   noteEditor: noteEditorApi,
   switchView,
   setMinimized,
+  setCalendarOpen,
+  resizeWindow,
   config: configApi,
   sync: syncApi,
   setup: setupApi,

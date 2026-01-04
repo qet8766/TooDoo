@@ -139,6 +139,20 @@ a {
   font-size: 13px;
 }
 
+/* Calendar panel layout */
+.overlay-main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.overlay-main .task-columns {
+  flex: 1;
+  overflow-y: auto;
+  min-width: 0;
+}
+
 .task-columns {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -414,6 +428,17 @@ a {
   font-size: 14px;
 }
 
+.schedule-indicator {
+  margin-left: 6px;
+  font-size: 0.85em;
+  opacity: 0.7;
+  cursor: help;
+}
+
+.schedule-indicator:hover {
+  opacity: 1;
+}
+
 .task-text {
   display: flex;
   flex-direction: column;
@@ -458,6 +483,54 @@ a {
 
 .edit-textarea:focus {
   outline: 2px solid var(--accent);
+}
+
+.edit-schedule-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.edit-date-input,
+.edit-time-input {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--accent-soft, rgba(255, 255, 255, 0.2));
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8fbff;
+  font-size: 12px;
+}
+
+.edit-date-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.edit-time-input {
+  width: 80px;
+}
+
+.edit-date-input:focus,
+.edit-time-input:focus {
+  outline: none;
+  border-color: var(--accent, rgba(94, 234, 212, 0.5));
+}
+
+/* Style for Chromium date/time picker */
+.edit-date-input::-webkit-calendar-picker-indicator,
+.edit-time-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+}
+
+.clear-schedule-btn {
+  padding: 2px 6px !important;
+  font-size: 10px !important;
+  opacity: 0.7;
+}
+
+.clear-schedule-btn:hover {
+  opacity: 1;
 }
 
 .checkbox {
@@ -875,6 +948,34 @@ a {
 .focus-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+/* Resize grip for frameless window */
+.resize-grip {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  cursor: se-resize;
+  z-index: 100;
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+
+.resize-grip::before {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid rgba(255, 255, 255, 0.5);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.resize-grip:hover {
+  opacity: 0.8;
 }
 
 /* ==================== Notetank Styles ==================== */

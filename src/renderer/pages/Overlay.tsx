@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import type { ProjectNote, Task, TaskCategory } from '@shared/types'
 import { CATEGORIES, NORMAL_CATEGORIES } from '@shared/categories'
+import { CalendarPanel } from '../components/Calendar'
 
 const FONT_SIZE_KEY = 'toodoo-font-size'
 const DEFAULT_FONT_SIZE = 14
@@ -19,7 +20,7 @@ type SyncStatus = {
 
 const TooDooOverlay = () => {
   const [tasks, setTasks] = useState<Task[]>([])
-  const [editing, setEditing] = useState<Record<string, { title: string; description: string }>>({})
+  const [editing, setEditing] = useState<Record<string, { title: string; description: string; scheduledDate: string; scheduledTime: string }>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null)
   const [noteModal, setNoteModal] = useState<{ taskId: string | null; text: string }>({ taskId: null, text: '' })
@@ -33,6 +34,18 @@ const TooDooOverlay = () => {
   })
   const [isMinimized, setIsMinimized] = useState(false)
   const [minimizedAt, setMinimizedAt] = useState<number | null>(null)
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false)
+
+  // Notify main process when calendar opens/closes to resize window
+  // Use a ref to track what we last sent to avoid duplicate IPC calls
+  const lastCalendarStateRef = useRef<boolean | null>(null)
+  useEffect(() => {
+    // Only send IPC if state actually changed from what we last sent
+    if (lastCalendarStateRef.current !== isCalendarOpen) {
+      lastCalendarStateRef.current = isCalendarOpen
+      window.toodoo.setCalendarOpen(isCalendarOpen)
+    }
+  }, [isCalendarOpen])
 
   // Poll sync status
   useEffect(() => {
@@ -225,7 +238,8 @@ const TooDooOverlay = () => {
       await window.toodoo.tasks.reorder({ taskId, targetIndex })
     } else {
       // Move to different category (at target position)
-      const result = await window.toodoo.tasks.update({ id: taskId, category })
+      // Set userPromoted to prevent auto-demotion of scheduled tasks
+      const result = await window.toodoo.tasks.update({ id: taskId, category, userPromoted: true })
       if (result && !('error' in result)) {
         // After moving, reorder to specific position
         await window.toodoo.tasks.reorder({ taskId, targetIndex })
@@ -240,7 +254,8 @@ const TooDooOverlay = () => {
     setDropTarget(null)
     if (!taskId) return
 
-    const result = await window.toodoo.tasks.update({ id: taskId, category })
+    // Set userPromoted to prevent auto-demotion of scheduled tasks
+    const result = await window.toodoo.tasks.update({ id: taskId, category, userPromoted: true })
     if (result && !('error' in result)) {
       setTasks((prev) => prev.map((item) => (item.id === taskId ? result : item)))
     } else if (result && 'error' in result) {
@@ -254,16 +269,39 @@ const TooDooOverlay = () => {
   }, [])
 
   const startEdit = (task: Task) => {
-    setEditing((prev) => ({ ...prev, [task.id]: { title: task.title, description: task.description ?? '' } }))
+    // Convert scheduledDate timestamp to YYYY-MM-DD format for input
+    const dateStr = task.scheduledDate
+      ? new Date(task.scheduledDate).toISOString().split('T')[0]
+      : ''
+    setEditing((prev) => ({
+      ...prev,
+      [task.id]: {
+        title: task.title,
+        description: task.description ?? '',
+        scheduledDate: dateStr,
+        scheduledTime: task.scheduledTime ?? '',
+      },
+    }))
   }
 
   const saveEdit = async (taskId: string) => {
     const form = editing[taskId]
     if (!form) return
+
+    // Convert date string to timestamp (null to clear schedule)
+    let scheduledDate: number | null = null
+    if (form.scheduledDate) {
+      const date = new Date(form.scheduledDate)
+      date.setHours(0, 0, 0, 0)
+      scheduledDate = date.getTime()
+    }
+
     const result = await window.toodoo.tasks.update({
       id: taskId,
       title: form.title,
       description: form.description.trim() ? form.description : null,
+      scheduledDate,
+      scheduledTime: form.scheduledTime || null,
     })
     if (result && !('error' in result)) {
       setTasks((prev) => prev.map((item) => (item.id === taskId ? result : item)))
@@ -377,6 +415,13 @@ const TooDooOverlay = () => {
               <button className="feature-btn no-drag" onClick={() => window.toodoo.switchView('notetank')} title="Switch to Notes">
                 Notes
               </button>
+              <button
+                className={`feature-btn no-drag ${isCalendarOpen ? 'active' : ''}`}
+                onClick={() => setIsCalendarOpen(prev => !prev)}
+                title="Toggle Calendar"
+              >
+                Cal
+              </button>
             </div>
           </>
         )}
@@ -418,93 +463,137 @@ const TooDooOverlay = () => {
       </div>
 
       {!isMinimized && (
-      <div className="task-columns">
-        {visibleCategories.map((cat) => {
-          const list = tasksByCategory[cat.key] ?? []
-          return (
-            <section key={cat.key} className={`task-section compact tone-${cat.tone}`} onDragOver={allowDrop} onDrop={handleDropOnCategory(cat.key)}>
-              <div className="section-header-compact">
-                <button className="section-dot-btn" onClick={() => window.toodoo.openQuickAdd(cat.key)} title={`Add ${cat.key} task`}>
-                  <span className="section-dot" />
-                </button>
-                <span className="count-pill">{list.length}</span>
-              </div>
+      <div className="overlay-main">
+        <div className="task-columns">
+          {visibleCategories.map((cat) => {
+            const list = tasksByCategory[cat.key] ?? []
+            return (
+              <section key={cat.key} className={`task-section compact tone-${cat.tone}`} onDragOver={allowDrop} onDrop={handleDropOnCategory(cat.key)}>
+                <div className="section-header-compact">
+                  <button className="section-dot-btn" onClick={() => window.toodoo.openQuickAdd(cat.key)} title={`Add ${cat.key} task`}>
+                    <span className="section-dot" />
+                  </button>
+                  <span className="count-pill">{list.length}</span>
+                </div>
 
-              {!isLoading && list.length === 0 && <p className="muted compact-muted">Empty</p>}
-              <div className="task-list">
-                {list.map((task, index) => {
-                  const form = editing[task.id]
-                  const isDropTarget = dropTarget?.category === cat.key && dropTarget?.index === index
-                  return (
-                    <div
-                      key={task.id}
-                      className={`task-card no-drag ${cat.key === 'project' ? 'project-card' : ''} ${isDropTarget ? 'drop-target' : ''} ${draggingTaskId === task.id ? 'dragging' : ''}`}
-                      draggable={!form}
-                      onDragStart={handleDragStart(task.id)}
-                      onDragEnd={handleDragEnd}
-                      onDragOver={handleDragOverTask(cat.key, index)}
-                      onDrop={handleDropOnTask(cat.key, index)}
-                    >
-                      <div className="task-card-header">
-                        <div className={`checkbox delete-checkbox ${armedForDelete.has(task.id) ? 'armed' : ''}`} onClick={() => handleTaskDeleteClick(task.id)}>
-                          <span />
-                        </div>
-                        {form ? (
-                          <div className="task-editing">
-                            <input className="edit-input" value={form.title} onChange={(e) => setEditing(p => ({ ...p, [task.id]: { ...form, title: e.target.value } }))} />
-                            <textarea className="edit-textarea" rows={3} value={form.description} onChange={(e) => setEditing(p => ({ ...p, [task.id]: { ...form, description: e.target.value } }))} placeholder="Description" />
+                {!isLoading && list.length === 0 && <p className="muted compact-muted">Empty</p>}
+                <div className="task-list">
+                  {list.map((task, index) => {
+                    const form = editing[task.id]
+                    const isDropTarget = dropTarget?.category === cat.key && dropTarget?.index === index
+                    return (
+                      <div
+                        key={task.id}
+                        className={`task-card no-drag ${cat.key === 'project' ? 'project-card' : ''} ${isDropTarget ? 'drop-target' : ''} ${draggingTaskId === task.id ? 'dragging' : ''}`}
+                        draggable={!form}
+                        onDragStart={handleDragStart(task.id)}
+                        onDragEnd={handleDragEnd}
+                        onDragOver={handleDragOverTask(cat.key, index)}
+                        onDrop={handleDropOnTask(cat.key, index)}
+                      >
+                        <div className="task-card-header">
+                          <div className={`checkbox delete-checkbox ${armedForDelete.has(task.id) ? 'armed' : ''}`} onClick={() => handleTaskDeleteClick(task.id)}>
+                            <span />
                           </div>
-                        ) : (
-                          <div className="task-text" onDoubleClick={() => startEdit(task)}>
-                            <div className="task-title">{task.title}</div>
-                            {task.description && <div className="muted small-text">{task.description}</div>}
-                          </div>
-                        )}
-                        <div className="task-actions">
                           {form ? (
-                            <><button className="small-button" onClick={() => saveEdit(task.id)}>Save</button><button className="small-button" onClick={() => setEditing(p => { const n = { ...p }; delete n[task.id]; return n })}>Cancel</button></>
-                          ) : (
-                            cat.key === 'project' && <button className="small-button" onClick={() => setNoteModal({ taskId: task.id, text: '' })}>Add note</button>
-                          )}
-                        </div>
-                      </div>
-                      {cat.key === 'project' && (
-                        <div className="project-notes">
-                          <div className="notes-list">
-                            {(task.projectNotes ?? []).map((n) => (
-                              <div key={n.id} className="note-row">
-                                <div className={`checkbox delete-checkbox ${armedForDelete.has(n.id) ? 'armed' : ''}`} onClick={() => handleNoteDeleteClick(task.id, n.id)}>
-                                  <span />
-                                </div>
-                                {editingNote?.noteId === n.id ? (
-                                  <div className="note-editing">
-                                    <input
-                                      className="edit-input"
-                                      value={editingNote.content}
-                                      onChange={(e) => setEditingNote({ ...editingNote, content: e.target.value })}
-                                      onKeyDown={(e) => { if (e.key === 'Enter') saveEditNote(task.id); if (e.key === 'Escape') setEditingNote(null) }}
-                                      autoFocus
-                                    />
-                                    <div className="note-edit-actions">
-                                      <button className="small-button" onClick={() => saveEditNote(task.id)}>Save</button>
-                                      <button className="small-button" onClick={() => setEditingNote(null)}>Cancel</button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <p onDoubleClick={() => startEditNote(n)}>{n.content}</p>
+                            <div className="task-editing">
+                              <input className="edit-input" value={form.title} onChange={(e) => setEditing(p => ({ ...p, [task.id]: { ...form, title: e.target.value } }))} />
+                              <textarea className="edit-textarea" rows={3} value={form.description} onChange={(e) => setEditing(p => ({ ...p, [task.id]: { ...form, description: e.target.value } }))} placeholder="Description" />
+                              <div className="edit-schedule-row">
+                                <input
+                                  type="date"
+                                  className="edit-date-input"
+                                  value={form.scheduledDate}
+                                  onChange={(e) => setEditing(p => ({ ...p, [task.id]: { ...form, scheduledDate: e.target.value } }))}
+                                  title="Schedule date"
+                                />
+                                <input
+                                  type="time"
+                                  className="edit-time-input"
+                                  value={form.scheduledTime}
+                                  onChange={(e) => setEditing(p => ({ ...p, [task.id]: { ...form, scheduledTime: e.target.value } }))}
+                                  title="Schedule time (optional)"
+                                />
+                                {(form.scheduledDate || form.scheduledTime) && (
+                                  <button
+                                    type="button"
+                                    className="small-button clear-schedule-btn"
+                                    onClick={() => setEditing(p => ({ ...p, [task.id]: { ...form, scheduledDate: '', scheduledTime: '' } }))}
+                                    title="Clear schedule"
+                                  >
+                                    ✕
+                                  </button>
                                 )}
                               </div>
-                            ))}
+                            </div>
+                          ) : (
+                            <div className="task-text" onDoubleClick={() => startEdit(task)}>
+                              <div className="task-title">
+                                {task.title}
+                                {task.scheduledDate && (
+                                  <span
+                                    className="schedule-indicator"
+                                    title={`Scheduled: ${new Date(task.scheduledDate).toLocaleDateString('ko-KR')}${task.scheduledTime ? ` ${task.scheduledTime}` : ''}`}
+                                  >
+                                    📅
+                                  </span>
+                                )}
+                              </div>
+                              {task.description && <div className="muted small-text">{task.description}</div>}
+                            </div>
+                          )}
+                          <div className="task-actions">
+                            {form ? (
+                              <><button className="small-button" onClick={() => saveEdit(task.id)}>Save</button><button className="small-button" onClick={() => setEditing(p => { const n = { ...p }; delete n[task.id]; return n })}>Cancel</button></>
+                            ) : (
+                              cat.key === 'project' && <button className="small-button" onClick={() => setNoteModal({ taskId: task.id, text: '' })}>Add note</button>
+                            )}
                           </div>
                         </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </section>
-          )
-        })}
+                        {cat.key === 'project' && (
+                          <div className="project-notes">
+                            <div className="notes-list">
+                              {(task.projectNotes ?? []).map((n) => (
+                                <div key={n.id} className="note-row">
+                                  <div className={`checkbox delete-checkbox ${armedForDelete.has(n.id) ? 'armed' : ''}`} onClick={() => handleNoteDeleteClick(task.id, n.id)}>
+                                    <span />
+                                  </div>
+                                  {editingNote?.noteId === n.id ? (
+                                    <div className="note-editing">
+                                      <input
+                                        className="edit-input"
+                                        value={editingNote.content}
+                                        onChange={(e) => setEditingNote({ ...editingNote, content: e.target.value })}
+                                        onKeyDown={(e) => { if (e.key === 'Enter') saveEditNote(task.id); if (e.key === 'Escape') setEditingNote(null) }}
+                                        autoFocus
+                                      />
+                                      <div className="note-edit-actions">
+                                        <button className="small-button" onClick={() => saveEditNote(task.id)}>Save</button>
+                                        <button className="small-button" onClick={() => setEditingNote(null)}>Cancel</button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p onDoubleClick={() => startEditNote(n)}>{n.content}</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            )
+          })}
+        </div>
+
+        <CalendarPanel
+          isOpen={isCalendarOpen}
+          onToggle={() => setIsCalendarOpen(prev => !prev)}
+          tasks={tasks}
+        />
       </div>
       )}
       {noteModal.taskId && (
@@ -518,6 +607,58 @@ const TooDooOverlay = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Resize grip for frameless window */}
+      {!isMinimized && (
+        <div
+          className="resize-grip no-drag"
+          onMouseDown={(e: ReactMouseEvent) => {
+            e.preventDefault()
+            e.stopPropagation()
+
+            // Track position per-frame to handle both grow and shrink
+            let prevX = e.screenX
+            let prevY = e.screenY
+            let rafId: number | null = null
+            let pendingDeltaX = 0
+            let pendingDeltaY = 0
+
+            const applyResize = () => {
+              if (pendingDeltaX !== 0 || pendingDeltaY !== 0) {
+                window.toodoo.resizeWindow(pendingDeltaX, pendingDeltaY)
+                pendingDeltaX = 0
+                pendingDeltaY = 0
+              }
+              rafId = null
+            }
+
+            const onMouseMove = (moveEvent: MouseEvent) => {
+              // Accumulate deltas between frames
+              pendingDeltaX += moveEvent.screenX - prevX
+              pendingDeltaY += moveEvent.screenY - prevY
+              prevX = moveEvent.screenX
+              prevY = moveEvent.screenY
+
+              // Throttle to animation frames
+              if (rafId === null) {
+                rafId = requestAnimationFrame(applyResize)
+              }
+            }
+
+            const onMouseUp = () => {
+              if (rafId !== null) {
+                cancelAnimationFrame(rafId)
+                applyResize() // Apply any remaining delta
+              }
+              document.removeEventListener('mousemove', onMouseMove)
+              document.removeEventListener('mouseup', onMouseUp)
+            }
+
+            document.addEventListener('mousemove', onMouseMove)
+            document.addEventListener('mouseup', onMouseUp)
+          }}
+        />
       )}
     </div>
   )

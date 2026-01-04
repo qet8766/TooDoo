@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 TooDoo is a standalone Windows Electron app extracted from the Irodori tools deck. It provides an always-on-top todo overlay with category buckets and global-hotkey quick-add popups.
+Actively use typescript.
 
 **Stack:** Electron + React 19 + TypeScript + Vite (`vite-plugin-electron`) + Zustand.
 
