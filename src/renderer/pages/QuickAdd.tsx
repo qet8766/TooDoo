@@ -1,12 +1,17 @@
 import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useLocation } from 'react-router-dom'
 import type { Task, TaskCategory } from '@shared/types'
-import { CATEGORIES } from '@shared/categories'
+import { ALL_CATEGORIES, CATEGORIES } from '@shared/categories'
+
+const isValidCategory = (cat: string | null): cat is TaskCategory => {
+  return cat !== null && ALL_CATEGORIES.includes(cat as TaskCategory)
+}
 
 const QuickAdd = () => {
   const location = useLocation()
   const params = useMemo(() => new URLSearchParams(location.search), [location.search])
-  const category = (params.get('category') as TaskCategory) || 'short_term'
+  const rawCategory = params.get('category')
+  const category: TaskCategory = isValidCategory(rawCategory) ? rawCategory : 'hot'
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [status, setStatus] = useState('')
@@ -15,12 +20,26 @@ const QuickAdd = () => {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const trimmed = title.trim()
-    if (!trimmed) return
+    if (!trimmed) {
+      setStatus('Title is required')
+      return
+    }
+
+    if (trimmed.length > 500) {
+      setStatus('Title too long (max 500 characters)')
+      return
+    }
+
+    const descTrimmed = description.trim()
+    if (descTrimmed.length > 5000) {
+      setStatus('Description too long (max 5000 characters)')
+      return
+    }
 
     const payload: Task = {
       id: crypto.randomUUID(),
       title: trimmed,
-      description: description.trim() || undefined,
+      description: descTrimmed || undefined,
       category,
       isDone: false,
       createdAt: Date.now(),
@@ -29,12 +48,21 @@ const QuickAdd = () => {
     }
 
     try {
-      await window.toodoo.tasks.add(payload)
+      setStatus('Adding...')
+      const result = await window.toodoo.tasks.add(payload)
+      // Check if result is an error object
+      if (result && 'error' in result) {
+        setStatus(`Failed: ${result.error}`)
+        return
+      }
       setStatus('Added!')
+      // Await the delay before closing (no race condition)
+      await new Promise(resolve => setTimeout(resolve, 300))
       window.close()
     } catch (error) {
       console.error('Failed to add task from quick-add', error)
-      setStatus('Failed to add task')
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      setStatus(`Failed: ${message}`)
     }
   }
 

@@ -1,2 +1,2 @@
-export { SHORTCUTS, type ShortcutId, type ShortcutDefinition } from './definitions'
-export { registerShortcut, unregisterShortcut, isShortcutRegistered, unregisterAllShortcuts, getRegisteredShortcuts } from './manager'
+export { SHORTCUTS, type ShortcutId } from './definitions'
+export { registerShortcut, unregisterShortcut } from './manager'

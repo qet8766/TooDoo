@@ -1,6 +1,6 @@
 import type { IpcMainInvokeEvent } from 'electron'
 import { ipcMain } from './electron'
-import { broadcastTaskChange } from './broadcast'
+import { broadcastTaskChange, broadcastNotesChange } from './broadcast'
 
 type Handler<TPayload, TResult> = (payload: TPayload) => TResult | Promise<TResult>
 
@@ -12,6 +12,18 @@ export const handleWithBroadcast = <TPayload, TResult>(
   ipcMain.handle(channel, async (_event: IpcMainInvokeEvent, payload: TPayload) => {
     const result = await handler(payload)
     broadcastTaskChange()
+    return result
+  })
+}
+
+/** Register IPC handler that broadcasts notes changes after execution */
+export const handleWithNotesBroadcast = <TPayload, TResult>(
+  channel: string,
+  handler: Handler<TPayload, TResult>,
+) => {
+  ipcMain.handle(channel, async (_event: IpcMainInvokeEvent, payload: TPayload) => {
+    const result = await handler(payload)
+    broadcastNotesChange()
     return result
   })
 }

@@ -1,4 +1,4 @@
-export type TaskCategory = 'short_term' | 'long_term' | 'project' | 'immediate'
+export type TaskCategory = 'scorching' | 'hot' | 'warm' | 'cool' | 'project'
 
 export interface ProjectNote {
   id: string
@@ -19,4 +19,13 @@ export interface Task {
   updatedAt: number
   isDeleted: boolean
   projectNotes?: ProjectNote[]
+}
+
+export interface Note {
+  id: string
+  title: string
+  content: string
+  createdAt: number
+  updatedAt: number
+  isDeleted: boolean
 }

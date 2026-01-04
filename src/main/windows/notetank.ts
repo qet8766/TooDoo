@@ -4,7 +4,7 @@ const manager = createSingletonWindowManager()
 
 const config: WindowConfig = {
   type: 'overlay',
-  route: '/toodoo',
+  route: '/notetank',
   width: 340,
   height: 460,
   minWidth: 300,
@@ -13,6 +13,6 @@ const config: WindowConfig = {
   resizable: true,
 }
 
-export const createTooDooOverlay = () => manager.create(() => createWindow(config))
-export const closeTooDooOverlay = () => manager.close()
-export const getTooDooOverlay = () => manager.get()
+export const createNotetankOverlay = () => manager.create(() => createWindow(config))
+export const closeNotetankOverlay = () => manager.close()
+export const getNotetankOverlay = () => manager.get()

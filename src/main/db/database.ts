@@ -1,506 +1,766 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { app } from '../electron'
-import type { ProjectNote, Task, TaskCategory } from '@shared/types'
+import type { Note, ProjectNote, Task, TaskCategory } from '@shared/types'
+import { ALL_CATEGORIES } from '@shared/categories'
+import {
+  getNasPath,
+  getNasStorePath,
+  getNasLockPath,
+  getLocalCachePath,
+  getMachineId,
+  setLastSyncAt,
+  getLastSyncAt,
+} from './config'
+import { acquireLock, releaseLock } from './file-lock'
 
-// --- Types ---
+// --- Constants & Types ---
 
-type SyncQueueItem = {
+const SYNC_INTERVAL_MS = 5_000
+const SYNC_DEBOUNCE_MS = 1_000  // Debounce rapid sync triggers
+const MAX_PAYLOAD_SIZE = 100_000
+
+// Circuit breaker constants
+const MAX_CONSECUTIVE_ERRORS = 5
+const MIN_BACKOFF_MS = 30_000       // Start with 30s
+const MAX_BACKOFF_MS = 5 * 60_000   // Max 5 minutes
+
+type PendingChange = {
   id: string
-  table: string
+  table: 'tasks' | 'project_notes' | 'notes'
   recordId: string
   operation: 'create' | 'update' | 'delete'
-  payload: object | null
-  createdAt: number
-  retryCount: number
+  timestamp: number
 }
 
-type LocalStore = {
-  cache: {
-    tasks: Task[]
-    lastSyncAt: number
-  }
-  syncQueue: SyncQueueItem[]
-  settings: {
-    apiUrl: string
-  }
+type LocalCache = {
+  tasks: Task[]
+  notes: Note[]
+  pendingChanges: PendingChange[]
+  lastNasSyncAt: number
 }
 
-// --- Local Storage (JSON file) ---
+// --- Cache State ---
 
-let store: LocalStore | null = null
-let storePath: string | null = null
+let cache: LocalCache | null = null
+let cachePath: string | null = null
 
-const getDefaultStore = (): LocalStore => ({
-  cache: {
-    tasks: [],
-    lastSyncAt: 0,
-  },
-  syncQueue: [],
-  settings: {
-    apiUrl: 'http://100.76.250.5:3456',
-  },
+const getDefaultCache = (): LocalCache => ({
+  tasks: [],
+  notes: [],
+  pendingChanges: [],
+  lastNasSyncAt: 0,
 })
 
-const loadStore = (): LocalStore => {
-  if (store) return store
+// --- Cache Persistence ---
 
-  const userData = app.getPath('userData')
-  fs.mkdirSync(userData, { recursive: true })
-  storePath = path.join(userData, 'toodoo-store.json')
+const loadCache = (): LocalCache => {
+  if (cache) return cache
 
-  try {
-    if (fs.existsSync(storePath)) {
-      const data = fs.readFileSync(storePath, 'utf-8')
-      store = { ...getDefaultStore(), ...JSON.parse(data) }
-    } else {
-      store = getDefaultStore()
-    }
-  } catch (error) {
-    console.warn('[TooDoo] Failed to load store, using defaults:', error)
-    store = getDefaultStore()
+  cachePath = getLocalCachePath()
+
+  // Ensure directory exists
+  const cacheDir = path.dirname(cachePath)
+  if (!fs.existsSync(cacheDir)) {
+    fs.mkdirSync(cacheDir, { recursive: true })
   }
 
-  return store!
-}
+  // Migrate from old store if it exists
+  migrateFromOldStore()
 
-const saveStore = () => {
-  if (!store || !storePath) return
   try {
-    fs.writeFileSync(storePath, JSON.stringify(store, null, 2))
-  } catch (error) {
-    console.warn('[TooDoo] Failed to save store:', error)
+    cache = fs.existsSync(cachePath)
+      ? { ...getDefaultCache(), ...JSON.parse(fs.readFileSync(cachePath, 'utf-8')) }
+      : getDefaultCache()
+  } catch (err) {
+    console.error('Failed to load cache, using defaults:', err)
+    cache = getDefaultCache()
   }
+
+  // Run category migration
+  runCategoryMigration()
+
+  return cache!
 }
 
-const ensureStore = () => {
-  if (!store) loadStore()
-  return store!
-}
-
-// --- API Client ---
-
-const getApiUrl = () => ensureStore().settings.apiUrl
-
-const apiFetch = async <T>(
-  endpoint: string,
-  options: RequestInit = {},
-): Promise<{ data: T | null; error: string | null }> => {
-  try {
-    const url = `${getApiUrl()}${endpoint}`
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    })
-
-    if (!response.ok) {
-      const errorData = (await response.json().catch(() => ({}))) as { error?: string }
-      return { data: null, error: errorData.error || `HTTP ${response.status}` }
+const saveCache = () => {
+  if (cache && cachePath) {
+    try {
+      fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2))
+    } catch (err) {
+      console.error('Failed to save cache:', err)
     }
-
-    const data = (await response.json()) as T
-    return { data, error: null }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Network error'
-    return { data: null, error: message }
   }
 }
 
-// --- Sync Queue Management ---
+const ensureCache = () => {
+  if (!cache) loadCache()
+  return cache!
+}
 
-let isOnline = false
-let syncInProgress = false
-let syncInterval: ReturnType<typeof setInterval> | null = null
+const updateTasksCache = (fn: (tasks: Task[]) => Task[]) => {
+  ensureCache().tasks = fn(ensureCache().tasks)
+  saveCache()
+}
 
-const generateId = () => crypto.randomUUID()
+const updateNotesCache = (fn: (notes: Note[]) => Note[]) => {
+  ensureCache().notes = fn(ensureCache().notes)
+  saveCache()
+}
 
-const enqueueSync = (
-  table: string,
-  recordId: string,
-  operation: 'create' | 'update' | 'delete',
-  payload: object | null,
-): string => {
-  const s = ensureStore()
-  const id = generateId()
+// --- Migration from Old Store ---
 
-  // Find existing operation for this record
-  const existingIndex = s.syncQueue.findIndex(
-    (item) => item.table === table && item.recordId === recordId,
-  )
+const migrateFromOldStore = () => {
+  if (!cachePath) return
 
-  if (existingIndex !== -1) {
-    const existing = s.syncQueue[existingIndex]
+  const userDataDir = app.getPath('userData')
+  const oldStorePath = path.join(userDataDir, 'toodoo-store.json')
 
-    // Handle operation coalescing carefully to prevent data loss
-    if (existing.operation === 'create' && operation === 'delete') {
-      // If we're deleting something that was never synced (created offline),
-      // just remove the create operation - no need to sync anything
-      s.syncQueue.splice(existingIndex, 1)
-      saveStore()
-      console.info(`[TooDoo] Removed unsent create for ${table}:${recordId} (deleted before sync)`)
-      return id
-    }
+  // If cache already exists, no need to migrate
+  if (fs.existsSync(cachePath)) return
 
-    if (existing.operation === 'create' && operation === 'update') {
-      // Merge update into create - keep it as a create with updated payload
-      s.syncQueue[existingIndex] = {
-        ...existing,
-        payload: { ...existing.payload, ...payload },
+  // Check for old local store
+  if (fs.existsSync(oldStorePath)) {
+    try {
+      const oldData = JSON.parse(fs.readFileSync(oldStorePath, 'utf-8'))
+      if (oldData.cache) {
+        cache = {
+          tasks: oldData.cache.tasks || [],
+          notes: oldData.cache.notes || [],
+          pendingChanges: [],
+          lastNasSyncAt: 0,
+        }
+        saveCache()
+        // Rename old file to backup
+        fs.renameSync(oldStorePath, `${oldStorePath}.migrated-${Date.now()}`)
+        console.log('Migrated data from old store to new cache format')
       }
-      saveStore()
-      console.info(`[TooDoo] Merged update into pending create for ${table}:${recordId}`)
-      return existing.id
+    } catch (err) {
+      console.error('Failed to migrate old store:', err)
     }
+  }
+}
 
-    // For other cases, remove the old operation
-    s.syncQueue.splice(existingIndex, 1)
+// --- Category Migration ---
+
+const runCategoryMigration = () => {
+  if (!cache) return
+
+  const categoryMap: Record<string, TaskCategory> = {
+    'short_term': 'hot',
+    'long_term': 'warm',
+    'immediate': 'scorching',
   }
 
-  s.syncQueue.push({
-    id,
+  let migrated = false
+  cache.tasks = cache.tasks.map(task => {
+    const oldCategory = task.category as string
+    if (oldCategory in categoryMap) {
+      migrated = true
+      return { ...task, category: categoryMap[oldCategory] }
+    }
+    return task
+  })
+
+  if (migrated) {
+    console.log('Migrated task categories from old naming to new naming')
+    saveCache()
+  }
+}
+
+// --- Pending Changes Tracking ---
+
+const addPendingChange = (table: 'tasks' | 'project_notes' | 'notes', recordId: string, operation: 'create' | 'update' | 'delete') => {
+  const c = ensureCache()
+
+  // Remove any existing pending change for this record
+  c.pendingChanges = c.pendingChanges.filter(p => !(p.table === table && p.recordId === recordId))
+
+  // Add new pending change
+  c.pendingChanges.push({
+    id: crypto.randomUUID(),
     table,
     recordId,
     operation,
-    payload,
-    createdAt: Date.now(),
-    retryCount: 0,
+    timestamp: Date.now(),
   })
 
-  saveStore()
-  console.info(`[TooDoo] Queued ${operation} for ${table}:${recordId}`)
-  return id
+  saveCache()
 }
 
-const dequeueSync = (id: string) => {
-  const s = ensureStore()
-  s.syncQueue = s.syncQueue.filter((item) => item.id !== id)
-  saveStore()
+const clearPendingChanges = () => {
+  ensureCache().pendingChanges = []
+  saveCache()
 }
 
-const incrementRetryCount = (id: string) => {
-  const s = ensureStore()
-  const item = s.syncQueue.find((i) => i.id === id)
-  if (item) {
-    item.retryCount++
-    saveStore()
-  }
+// --- NAS Operations ---
+
+type NasStore = {
+  tasks: Task[]
+  notes: Note[]
+  lastModifiedAt: number
+  lastModifiedBy: string
 }
 
-const tryImmediateSync = (queueId: string, request: { endpoint: string; method: string; body?: object }) => {
-  void apiFetch(request.endpoint, {
-    method: request.method,
-    body: request.body ? JSON.stringify(request.body) : undefined,
-  }).then(({ error }) => {
-    if (!error) {
-      dequeueSync(queueId)
+const getDefaultNasStore = (): NasStore => ({
+  tasks: [],
+  notes: [],
+  lastModifiedAt: 0,
+  lastModifiedBy: '',
+})
+
+const readFromNas = async (): Promise<NasStore | null> => {
+  const nasStorePath = getNasStorePath()
+  if (!nasStorePath) return null
+
+  try {
+    if (!fs.existsSync(nasStorePath)) {
+      return getDefaultNasStore()
     }
-  })
-}
-
-// Helper: Update tasks cache and persist
-const updateTasksCache = (updater: (tasks: Task[]) => Task[]) => {
-  const s = ensureStore()
-  s.cache.tasks = updater(s.cache.tasks)
-  saveStore()
-}
-
-// Helper: Queue operation and attempt immediate sync
-const queueAndSync = (
-  table: string,
-  recordId: string,
-  operation: 'create' | 'update' | 'delete',
-  payload: object | null,
-  request: { endpoint: string; method: string; body?: object },
-) => {
-  const queueId = enqueueSync(table, recordId, operation, payload)
-  tryImmediateSync(queueId, request)
-}
-
-export const getSyncQueueCount = (): number => {
-  return ensureStore().syncQueue.length
-}
-
-export const getSyncStatus = (): { isOnline: boolean; pendingCount: number; lastSyncAt: number } => {
-  const s = ensureStore()
-  return {
-    isOnline,
-    pendingCount: s.syncQueue.length,
-    lastSyncAt: s.cache.lastSyncAt,
+    const content = fs.readFileSync(nasStorePath, 'utf-8')
+    return JSON.parse(content) as NasStore
+  } catch (err) {
+    console.error('Failed to read from NAS:', err)
+    return null
   }
 }
 
-const checkOnlineStatus = async (): Promise<boolean> => {
-  const { error } = await apiFetch('/api/health')
-  isOnline = !error
-  return isOnline
+const writeToNas = async (store: NasStore): Promise<boolean> => {
+  const nasStorePath = getNasStorePath()
+  if (!nasStorePath) return false
+
+  try {
+    // Ensure NAS directory exists
+    const nasDir = path.dirname(nasStorePath)
+    if (!fs.existsSync(nasDir)) {
+      fs.mkdirSync(nasDir, { recursive: true })
+    }
+
+    // Write atomically using temp file
+    const tempPath = `${nasStorePath}.${getMachineId()}.tmp`
+    fs.writeFileSync(tempPath, JSON.stringify(store, null, 2))
+    fs.renameSync(tempPath, nasStorePath)
+    return true
+  } catch (err) {
+    console.error('Failed to write to NAS:', err)
+    return false
+  }
 }
 
-const processQueueItem = async (item: SyncQueueItem): Promise<boolean> => {
-  let endpoint = ''
-  let method = ''
-  let body: string | undefined
+// --- Sync Logic ---
 
-  switch (item.table) {
-    case 'tasks':
-      if (item.operation === 'delete') {
-        endpoint = `/api/tasks/${item.recordId}`
-        method = 'DELETE'
-      } else {
-        endpoint = item.operation === 'create' ? '/api/tasks' : `/api/tasks/${item.recordId}`
-        method = item.operation === 'create' ? 'POST' : 'PUT'
-        body = JSON.stringify(item.payload)
+let isNasOnline = false
+let syncInProgress = false
+let syncInterval: ReturnType<typeof setInterval> | null = null
+let syncDebounceTimeout: ReturnType<typeof setTimeout> | null = null
+let syncErrorCount = 0
+let currentBackoffMs = MIN_BACKOFF_MS
+let circuitBreakerOpen = false
+let circuitBreakerResetTime = 0
+
+const mergeData = (local: LocalCache, nas: NasStore): { tasks: Task[]; notes: Note[] } => {
+  // Create maps for efficient lookup
+  const nasTaskMap = new Map(nas.tasks.map(t => [t.id, t]))
+  const nasNoteMap = new Map(nas.notes.map(n => [n.id, n]))
+  const localTaskMap = new Map(local.tasks.map(t => [t.id, t]))
+  const localNoteMap = new Map(local.notes.map(n => [n.id, n]))
+
+  // Get IDs of records with pending changes
+  const pendingTaskIds = new Set(
+    local.pendingChanges.filter(p => p.table === 'tasks').map(p => p.recordId)
+  )
+  const pendingNoteIds = new Set(
+    local.pendingChanges.filter(p => p.table === 'notes').map(p => p.recordId)
+  )
+
+  // Merge tasks: LWW with pending changes preserved
+  const mergedTasks: Task[] = []
+  const allTaskIds = new Set([...nasTaskMap.keys(), ...localTaskMap.keys()])
+
+  for (const id of allTaskIds) {
+    const nasTask = nasTaskMap.get(id)
+    const localTask = localTaskMap.get(id)
+
+    if (pendingTaskIds.has(id)) {
+      // Local has pending changes - keep local version
+      if (localTask) {
+        mergedTasks.push(localTask)
       }
-      break
-
-    case 'project_notes':
-      if (item.operation === 'delete') {
-        endpoint = `/api/tasks/notes/${item.recordId}`
-        method = 'DELETE'
-      } else if (item.payload) {
-        const notePayload = item.payload as { taskId: string }
-        endpoint = `/api/tasks/${notePayload.taskId}/notes`
-        method = 'POST'
-        body = JSON.stringify(item.payload)
-      }
-      break
-
-    default:
-      console.warn(`[TooDoo] Unknown table in sync queue: ${item.table}`)
-      dequeueSync(item.id)
-      return true
+      // If local deleted, don't include
+    } else if (nasTask && localTask) {
+      // Both exist, no pending change - use newer one (LWW)
+      mergedTasks.push(nasTask.updatedAt >= localTask.updatedAt ? nasTask : localTask)
+    } else if (nasTask) {
+      mergedTasks.push(nasTask)
+    } else if (localTask) {
+      mergedTasks.push(localTask)
+    }
   }
 
-  const { error } = await apiFetch(endpoint, { method, body })
+  // Merge notes: same logic
+  const mergedNotes: Note[] = []
+  const allNoteIds = new Set([...nasNoteMap.keys(), ...localNoteMap.keys()])
 
-  if (error) {
-    console.warn(`[TooDoo] Failed to sync ${item.table}:${item.recordId}:`, error)
-    incrementRetryCount(item.id)
+  for (const id of allNoteIds) {
+    const nasNote = nasNoteMap.get(id)
+    const localNote = localNoteMap.get(id)
+
+    if (pendingNoteIds.has(id)) {
+      if (localNote) {
+        mergedNotes.push(localNote)
+      }
+    } else if (nasNote && localNote) {
+      mergedNotes.push(nasNote.updatedAt >= localNote.updatedAt ? nasNote : localNote)
+    } else if (nasNote) {
+      mergedNotes.push(nasNote)
+    } else if (localNote) {
+      mergedNotes.push(localNote)
+    }
+  }
+
+  return { tasks: mergedTasks, notes: mergedNotes }
+}
+
+const syncWithNas = async (): Promise<boolean> => {
+  const nasPath = getNasPath()
+  if (!nasPath) {
+    isNasOnline = false
     return false
   }
 
-  dequeueSync(item.id)
-  console.info(`[TooDoo] Synced ${item.operation} for ${item.table}:${item.recordId}`)
-  return true
+  const nasLockPath = getNasLockPath()
+  if (!nasLockPath) {
+    isNasOnline = false
+    return false
+  }
+
+  const machineId = getMachineId()
+
+  // Try to acquire lock
+  const { acquired, error } = await acquireLock(nasLockPath, machineId)
+  if (!acquired) {
+    console.warn('Could not acquire NAS lock:', error)
+    // NAS might still be online, just locked
+    isNasOnline = true
+    return false
+  }
+
+  try {
+    // Read current NAS data
+    const nasData = await readFromNas()
+    if (nasData === null) {
+      isNasOnline = false
+      return false
+    }
+
+    isNasOnline = true
+    const localCache = ensureCache()
+
+    // If we have pending changes, merge and write back
+    if (localCache.pendingChanges.length > 0) {
+      const pendingCount = localCache.pendingChanges.length
+      const merged = mergeData(localCache, nasData)
+
+      // Update NAS with merged data
+      const newNasStore: NasStore = {
+        tasks: merged.tasks,
+        notes: merged.notes,
+        lastModifiedAt: Date.now(),
+        lastModifiedBy: machineId,
+      }
+
+      const writeSuccess = await writeToNas(newNasStore)
+      if (writeSuccess) {
+        // Update local cache with merged data
+        localCache.tasks = merged.tasks
+        localCache.notes = merged.notes
+        localCache.lastNasSyncAt = Date.now()
+        clearPendingChanges()
+        saveCache()
+        setLastSyncAt(Date.now())
+        console.log(`Synced ${pendingCount} pending change(s) to NAS`)
+      }
+
+      return writeSuccess
+    } else {
+      // No pending changes - silently update local cache from NAS
+      localCache.tasks = nasData.tasks
+      localCache.notes = nasData.notes
+      localCache.lastNasSyncAt = Date.now()
+      saveCache()
+      setLastSyncAt(Date.now())
+      return true
+    }
+  } catch (err) {
+    console.error('Sync error:', err)
+    return false
+  } finally {
+    releaseLock(nasLockPath, machineId)
+  }
 }
 
-const syncFromServer = async (): Promise<boolean> => {
-  const s = ensureStore()
+// --- Sync Scheduler ---
 
-  const tasksRes = await apiFetch<Task[]>('/api/tasks')
+// Circuit breaker helpers
+const onSyncSuccess = () => {
+  syncErrorCount = 0
+  currentBackoffMs = MIN_BACKOFF_MS
+  circuitBreakerOpen = false
+}
 
-  if (tasksRes.data) {
-    s.cache.tasks = tasksRes.data
-    s.cache.lastSyncAt = Date.now()
-    saveStore()
-    console.info(`[TooDoo] Synced from server - Tasks: ${tasksRes.data.length}`)
+const onSyncFailure = (err?: unknown) => {
+  syncErrorCount++
+  if (err) console.error('Sync failed:', err)
+
+  if (syncErrorCount >= MAX_CONSECUTIVE_ERRORS && !circuitBreakerOpen) {
+    circuitBreakerOpen = true
+    circuitBreakerResetTime = Date.now() + currentBackoffMs
+    console.warn(`Circuit breaker opened: NAS sync failed ${syncErrorCount} times. Backing off for ${currentBackoffMs / 1000}s`)
+
+    // Exponential backoff: double the wait time for next failure
+    currentBackoffMs = Math.min(currentBackoffMs * 2, MAX_BACKOFF_MS)
+  }
+}
+
+const isCircuitBreakerAllowing = (): boolean => {
+  if (!circuitBreakerOpen) return true
+
+  // Check if backoff period has passed
+  if (Date.now() >= circuitBreakerResetTime) {
+    // Half-open state: allow one attempt
+    console.log('Circuit breaker half-open: attempting sync...')
     return true
   }
 
-  console.warn('[TooDoo] Failed to sync from server:', tasksRes.error)
   return false
 }
 
-const processSyncQueue = async () => {
-  if (syncInProgress) return
-  syncInProgress = true
-
-  try {
-    const online = await checkOnlineStatus()
-    if (!online) {
-      console.info('[TooDoo] Offline - skipping sync')
-      return
-    }
-
-    // Pull latest from server
-    await syncFromServer()
-
-    // Process pending queue items
-    const s = ensureStore()
-    const pendingItems = [...s.syncQueue]
-
-    if (pendingItems.length === 0) return
-
-    console.info(`[TooDoo] Processing ${pendingItems.length} queued items`)
-
-    for (const item of pendingItems) {
-      const success = await processQueueItem(item)
-      if (!success) {
-        const stillOnline = await checkOnlineStatus()
-        if (!stillOnline) break
-      }
-    }
-  } finally {
-    syncInProgress = false
-  }
-}
+export const getSyncStatus = () => ({
+  isOnline: isNasOnline,
+  pendingCount: ensureCache().pendingChanges.length,
+  lastSyncAt: getLastSyncAt(),
+  circuitBreakerOpen,
+  nextRetryAt: circuitBreakerOpen ? circuitBreakerResetTime : null,
+})
 
 export const startSyncScheduler = () => {
   if (syncInterval) return
-
   syncInterval = setInterval(() => {
-    void processSyncQueue()
-  }, 30000)
-
+    if (!syncInProgress && isCircuitBreakerAllowing()) {
+      syncInProgress = true
+      syncWithNas()
+        .then(success => success ? onSyncSuccess() : onSyncFailure())
+        .catch(err => onSyncFailure(err))
+        .finally(() => { syncInProgress = false })
+    }
+  }, SYNC_INTERVAL_MS)
   // Initial sync
-  void processSyncQueue()
-  console.info(`[TooDoo] Sync scheduler started - ${getSyncQueueCount()} items pending`)
+  syncInProgress = true
+  syncWithNas()
+    .then(success => success ? onSyncSuccess() : onSyncFailure())
+    .catch(err => onSyncFailure(err))
+    .finally(() => { syncInProgress = false })
 }
 
 export const stopSyncScheduler = () => {
   if (syncInterval) {
     clearInterval(syncInterval)
     syncInterval = null
-    console.info('[TooDoo] Sync scheduler stopped')
   }
 }
 
-export const triggerSync = () => {
-  void processSyncQueue()
+// Debounced sync trigger - coalesces rapid changes
+const debouncedSync = () => {
+  if (syncDebounceTimeout) {
+    clearTimeout(syncDebounceTimeout)
+  }
+  syncDebounceTimeout = setTimeout(() => {
+    syncDebounceTimeout = null
+    if (!syncInProgress && isCircuitBreakerAllowing()) {
+      syncInProgress = true
+      syncWithNas()
+        .then(success => success ? onSyncSuccess() : onSyncFailure())
+        .catch(err => onSyncFailure(err))
+        .finally(() => { syncInProgress = false })
+    }
+  }, SYNC_DEBOUNCE_MS)
 }
 
-// --- Database Initialization ---
+export const triggerSync = async () => {
+  if (syncInProgress) return
+  if (!isCircuitBreakerAllowing()) {
+    console.log('Sync blocked by circuit breaker, will retry at', new Date(circuitBreakerResetTime).toISOString())
+    return
+  }
+
+  syncInProgress = true
+  try {
+    const success = await syncWithNas()
+    success ? onSyncSuccess() : onSyncFailure()
+  } catch (err) {
+    onSyncFailure(err)
+  } finally {
+    syncInProgress = false
+  }
+}
+
+// Force reset circuit breaker (e.g., when user manually retries)
+export const resetCircuitBreaker = () => {
+  circuitBreakerOpen = false
+  syncErrorCount = 0
+  currentBackoffMs = MIN_BACKOFF_MS
+  console.log('Circuit breaker manually reset')
+}
 
 export const initDatabase = () => {
-  loadStore()
-  startSyncScheduler()
-  console.info('[TooDoo] Database initialized (REST API mode)')
-}
-
-// --- API URL Settings ---
-
-export const getApiUrlSetting = (): string => {
-  return ensureStore().settings.apiUrl
-}
-
-const isValidUrl = (url: string): boolean => {
-  try {
-    const parsed = new URL(url)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-  } catch {
-    return false
+  loadCache()
+  // Only start sync if NAS is configured
+  if (getNasPath()) {
+    startSyncScheduler()
   }
 }
 
-export const setApiUrlSetting = (url: string): { success: boolean; error?: string } => {
-  const trimmed = url.trim()
+// --- Validation ---
 
-  if (!trimmed) {
-    return { success: false, error: 'URL cannot be empty' }
-  }
+const validate = (rules: [boolean, string][]): string | null => rules.find(([fail]) => fail)?.[1] ?? null
 
-  if (!isValidUrl(trimmed)) {
-    return { success: false, error: 'Invalid URL format. Must be a valid HTTP/HTTPS URL.' }
-  }
+const validateTask = (p: { title?: string; description?: string | null; category?: TaskCategory }): string | null => validate([
+  [p.title !== undefined && typeof p.title !== 'string', 'Title must be a string'],
+  [typeof p.title === 'string' && !p.title.trim(), 'Title cannot be empty'],
+  [typeof p.title === 'string' && p.title.length > 500, 'Title too long'],
+  [p.description != null && typeof p.description !== 'string', 'Description must be a string'],
+  [typeof p.description === 'string' && p.description.length > 5000, 'Description too long'],
+  [p.category !== undefined && !ALL_CATEGORIES.includes(p.category), 'Invalid category'],
+  [JSON.stringify(p).length > MAX_PAYLOAD_SIZE, 'Payload too large'],
+])
 
-  const s = ensureStore()
-  s.settings.apiUrl = trimmed
-  saveStore()
-  void processSyncQueue()
-  return { success: true }
-}
+const validateProjectNote = (p: { content: string }): string | null => validate([
+  [typeof p.content !== 'string', 'Content must be a string'],
+  [!p.content.trim(), 'Content cannot be empty'],
+  [p.content.length > 10000, 'Content too long'],
+])
+
+const validateNotetankNote = (p: { title?: string; content?: string }): string | null => validate([
+  [p.title !== undefined && typeof p.title !== 'string', 'Title must be a string'],
+  [typeof p.title === 'string' && !p.title.trim(), 'Title cannot be empty'],
+  [typeof p.title === 'string' && p.title.length > 200, 'Title too long'],
+  [p.content !== undefined && typeof p.content !== 'string', 'Content must be a string'],
+  [typeof p.content === 'string' && p.content.length > 50000, 'Content too long'],
+])
 
 // --- Tasks ---
 
 export const getTasks = async (): Promise<Task[]> => {
-  const s = ensureStore()
-
-  // Try to sync from server
-  if (await checkOnlineStatus()) {
-    const { data } = await apiFetch<Task[]>('/api/tasks')
-    if (data) {
-      s.cache.tasks = data
-      saveStore()
-      return data
-    }
+  // Trigger a background sync but return cached data immediately
+  if (!syncInProgress && getNasPath()) {
+    syncInProgress = true
+    syncWithNas()
+      .catch(() => {})
+      .finally(() => { syncInProgress = false })
   }
-
-  // Return cached data if offline or error
-  return s.cache.tasks
+  return ensureCache().tasks
 }
 
-export const addTask = (payload: {
-  id: string
-  title: string
-  description?: string
-  category: TaskCategory
-  isDone?: boolean
-}): Task => {
+export const addTask = (p: { id: string; title: string; description?: string; category: TaskCategory; isDone?: boolean }): Task | { error: string } => {
+  const err = validateTask(p)
+  if (err) return { error: err }
+
   const now = Date.now()
   const task: Task = {
-    id: payload.id,
-    title: payload.title.trim(),
-    description: payload.description?.trim(),
-    category: payload.category,
-    isDone: payload.isDone || false,
+    id: p.id,
+    title: p.title.trim(),
+    description: p.description?.trim(),
+    category: p.category,
+    isDone: p.isDone ?? false,
     createdAt: now,
     updatedAt: now,
     isDeleted: false,
   }
 
   updateTasksCache(tasks => [task, ...tasks.filter(t => t.id !== task.id)])
-  queueAndSync('tasks', task.id, 'create', task, { endpoint: '/api/tasks', method: 'POST', body: task })
+  addPendingChange('tasks', task.id, 'create')
+
+  // Trigger background sync
+  debouncedSync()
+
   return task
 }
 
-export const updateTask = (payload: {
-  id: string
-  title?: string
-  description?: string | null
-  isDone?: boolean
-  category?: TaskCategory
-}): Task | null => {
-  const existing = ensureStore().cache.tasks.find(t => t.id === payload.id)
+export const updateTask = (p: { id: string; title?: string; description?: string | null; isDone?: boolean; category?: TaskCategory }): Task | null | { error: string } => {
+  const err = validateTask(p)
+  if (err) return { error: err }
+
+  const existing = ensureCache().tasks.find(t => t.id === p.id)
   if (!existing) return null
 
   const updated: Task = {
     ...existing,
-    title: payload.title !== undefined ? payload.title.trim() : existing.title,
-    description: payload.description === null ? undefined : (payload.description?.trim() ?? existing.description),
-    category: payload.category ?? existing.category,
-    isDone: payload.isDone ?? existing.isDone,
+    title: p.title !== undefined ? p.title.trim() : existing.title,
+    description: p.description === null ? undefined : (p.description?.trim() ?? existing.description),
+    category: p.category ?? existing.category,
+    isDone: p.isDone ?? existing.isDone,
     updatedAt: Date.now(),
   }
 
-  updateTasksCache(tasks => tasks.map(t => t.id === updated.id ? updated : t))
-  queueAndSync('tasks', updated.id, 'update', updated, { endpoint: `/api/tasks/${updated.id}`, method: 'PUT', body: updated })
+  updateTasksCache(tasks => tasks.map(t => t.id === p.id ? updated : t))
+  addPendingChange('tasks', p.id, 'update')
+
+  // Trigger background sync
+  debouncedSync()
+
   return updated
 }
 
 export const deleteTask = (id: string) => {
   updateTasksCache(tasks => tasks.filter(t => t.id !== id))
-  queueAndSync('tasks', id, 'delete', null, { endpoint: `/api/tasks/${id}`, method: 'DELETE' })
+  addPendingChange('tasks', id, 'delete')
+
+  // Trigger background sync
+  debouncedSync()
 }
 
 // --- Project Notes ---
 
-export const addProjectNote = (payload: { id: string; taskId: string; content: string }): ProjectNote => {
+export const addProjectNote = (p: { id: string; taskId: string; content: string }): ProjectNote | { error: string } => {
+  const err = validateProjectNote(p)
+  if (err) return { error: err }
+  if (!ensureCache().tasks.find(t => t.id === p.taskId)) return { error: 'Task not found' }
+
   const now = Date.now()
   const note: ProjectNote = {
-    id: payload.id,
-    taskId: payload.taskId,
-    content: payload.content.trim(),
+    id: p.id,
+    taskId: p.taskId,
+    content: p.content.trim(),
     createdAt: now,
     updatedAt: now,
     isDeleted: false,
   }
 
   updateTasksCache(tasks => tasks.map(t =>
-    t.id === payload.taskId ? { ...t, projectNotes: [...(t.projectNotes || []), note] } : t
+    t.id === p.taskId ? { ...t, projectNotes: [...(t.projectNotes || []), note] } : t
   ))
-  queueAndSync('project_notes', note.id, 'create', note, {
-    endpoint: `/api/tasks/${payload.taskId}/notes`,
-    method: 'POST',
-    body: { id: note.id, content: note.content },
-  })
+  addPendingChange('project_notes', note.id, 'create')
+
+  // Trigger background sync
+  debouncedSync()
+
   return note
+}
+
+export const updateProjectNote = (p: { id: string; content: string }): ProjectNote | null | { error: string } => {
+  const err = validateProjectNote(p)
+  if (err) return { error: err }
+
+  let foundNote: ProjectNote | null = null
+  let taskId: string | null = null
+  for (const task of ensureCache().tasks) {
+    const note = task.projectNotes?.find(n => n.id === p.id)
+    if (note) { foundNote = note; taskId = task.id; break }
+  }
+  if (!foundNote || !taskId) return null
+
+  const updated: ProjectNote = {
+    ...foundNote,
+    content: p.content.trim(),
+    updatedAt: Date.now(),
+  }
+
+  updateTasksCache(tasks => tasks.map(t =>
+    t.id === taskId
+      ? { ...t, projectNotes: (t.projectNotes ?? []).map(n => n.id === p.id ? updated : n) }
+      : t
+  ))
+  addPendingChange('project_notes', p.id, 'update')
+
+  // Trigger background sync
+  debouncedSync()
+
+  return updated
 }
 
 export const deleteProjectNote = (id: string) => {
   updateTasksCache(tasks => tasks.map(t =>
     t.projectNotes ? { ...t, projectNotes: t.projectNotes.filter(n => n.id !== id) } : t
   ))
-  queueAndSync('project_notes', id, 'delete', null, { endpoint: `/api/tasks/notes/${id}`, method: 'DELETE' })
+  addPendingChange('project_notes', id, 'delete')
+
+  // Trigger background sync
+  debouncedSync()
+}
+
+// --- Notetank Notes ---
+
+export const getNotes = async (): Promise<Note[]> => {
+  // Trigger a background sync but return cached data immediately
+  if (!syncInProgress && getNasPath()) {
+    syncInProgress = true
+    syncWithNas()
+      .catch(() => {})
+      .finally(() => { syncInProgress = false })
+  }
+  return ensureCache().notes
+}
+
+export const addNote = (p: { id: string; title: string; content: string }): Note | { error: string } => {
+  const err = validateNotetankNote(p)
+  if (err) return { error: err }
+
+  const now = Date.now()
+  const note: Note = {
+    id: p.id,
+    title: p.title.trim(),
+    content: p.content.trim(),
+    createdAt: now,
+    updatedAt: now,
+    isDeleted: false,
+  }
+
+  updateNotesCache(notes => [note, ...notes.filter(n => n.id !== note.id)])
+  addPendingChange('notes', note.id, 'create')
+
+  // Trigger background sync
+  debouncedSync()
+
+  return note
+}
+
+export const updateNote = (p: { id: string; title?: string; content?: string }): Note | null | { error: string } => {
+  const err = validateNotetankNote(p)
+  if (err) return { error: err }
+
+  const existing = ensureCache().notes.find(n => n.id === p.id)
+  if (!existing) return null
+
+  const updated: Note = {
+    ...existing,
+    title: p.title !== undefined ? p.title.trim() : existing.title,
+    content: p.content !== undefined ? p.content.trim() : existing.content,
+    updatedAt: Date.now(),
+  }
+
+  updateNotesCache(notes => notes.map(n => n.id === p.id ? updated : n))
+  addPendingChange('notes', p.id, 'update')
+
+  // Trigger background sync
+  debouncedSync()
+
+  return updated
+}
+
+export const deleteNote = (id: string) => {
+  updateNotesCache(notes => notes.filter(n => n.id !== id))
+  addPendingChange('notes', id, 'delete')
+
+  // Trigger background sync
+  debouncedSync()
+}
+
+// --- Re-initialize after setup ---
+
+export const reinitializeWithNas = () => {
+  // Reload cache and start sync
+  loadCache()
+  if (getNasPath()) {
+    startSyncScheduler()
+  }
 }

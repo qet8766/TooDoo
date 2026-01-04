@@ -177,6 +177,11 @@ a {
   padding: 2px 0;
 }
 
+.section-header-compact .section-dot-btn {
+  padding: 3px;
+  margin: -3px;
+}
+
 .section-header-compact .section-dot {
   width: 8px;
   height: 8px;
@@ -218,7 +223,54 @@ a {
   --accent-surface: rgba(248, 113, 113, 0.18);
 }
 
+.task-section.tone-red {
+  --accent: #ef4444;
+  --accent-soft: rgba(239, 68, 68, 0.35);
+  --accent-surface: rgba(239, 68, 68, 0.18);
+}
+
+.task-section.tone-yellow {
+  --accent: #eab308;
+  --accent-soft: rgba(234, 179, 8, 0.35);
+  --accent-surface: rgba(234, 179, 8, 0.18);
+}
+
+.task-section.tone-white {
+  --accent: #f5f5f5;
+  --accent-soft: rgba(245, 245, 245, 0.4);
+  --accent-surface: rgba(245, 245, 245, 0.2);
+}
+
+.task-section.tone-blue {
+  --accent: #3b82f6;
+  --accent-soft: rgba(59, 130, 246, 0.35);
+  --accent-surface: rgba(59, 130, 246, 0.18);
+}
+
+.section-dot-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  margin: -4px;
+  cursor: pointer;
+  border-radius: 999px;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.section-dot-btn:hover {
+  transform: scale(1.3);
+}
+
+.section-dot-btn:hover .section-dot {
+  box-shadow: 0 0 0 6px var(--accent-soft);
+}
+
+.section-dot-btn:active {
+  transform: scale(1.1);
+}
+
 .section-dot {
+  display: block;
   width: 10px;
   height: 10px;
   border-radius: 999px;
@@ -354,6 +406,14 @@ a {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  cursor: pointer;
+}
+
+.task-text:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  margin: -2px;
+  padding: 2px;
 }
 
 .task-actions {
@@ -394,11 +454,6 @@ a {
   align-items: center;
 }
 
-.checkbox input {
-  opacity: 0;
-  position: absolute;
-}
-
 .checkbox span {
   width: 18px;
   height: 18px;
@@ -408,9 +463,69 @@ a {
   background: rgba(255, 255, 255, 0.02);
 }
 
-.checkbox input:checked + span {
-  background: var(--accent);
-  border-color: transparent;
+/* Delete checkbox - subtle dot in idle, X when armed */
+.delete-checkbox {
+  cursor: pointer;
+}
+
+.delete-checkbox span {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  position: relative;
+}
+
+/* Idle state: small centered dot */
+.delete-checkbox span::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  background: rgba(239, 68, 68, 0.4);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.delete-checkbox:hover span {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.delete-checkbox:hover span::before {
+  background: rgba(239, 68, 68, 0.7);
+}
+
+/* Armed state - pulsing red with X icon */
+.delete-checkbox.armed span {
+  background: rgba(239, 68, 68, 0.5);
+  border-color: #ef4444;
+  animation: armed-pulse 0.5s ease-in-out infinite alternate;
+}
+
+.delete-checkbox.armed span::before,
+.delete-checkbox.armed span::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 2px;
+  background: #fff;
+  border-radius: 1px;
+}
+
+.delete-checkbox.armed span::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.delete-checkbox.armed span::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+@keyframes armed-pulse {
+  from { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  to { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2); }
 }
 
 .project-notes {
@@ -440,6 +555,26 @@ a {
 
 .note-row p {
   margin: 0;
+  cursor: pointer;
+}
+
+.note-row p:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  margin: -2px;
+  padding: 2px;
+}
+
+.note-editing {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.note-edit-actions {
+  display: flex;
+  gap: 4px;
 }
 
 .small-text {
@@ -533,4 +668,450 @@ a {
 
 .small-button:hover {
   background: rgba(255, 255, 255, 0.15);
+}
+
+/* Sync Status Indicator */
+.sync-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.sync-indicator.online {
+  background: rgba(94, 234, 212, 0.15);
+}
+
+.sync-indicator.offline {
+  background: rgba(248, 113, 113, 0.2);
+}
+
+.sync-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.sync-indicator.online .sync-dot {
+  background: #5eead4;
+  box-shadow: 0 0 4px rgba(94, 234, 212, 0.6);
+}
+
+.sync-indicator.offline .sync-dot {
+  background: #f87171;
+  box-shadow: 0 0 4px rgba(248, 113, 113, 0.6);
+  animation: none;
+}
+
+.sync-indicator.error {
+  background: rgba(251, 191, 36, 0.25);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+}
+
+.sync-indicator.error .sync-dot {
+  background: #fbbf24;
+  box-shadow: 0 0 4px rgba(251, 191, 36, 0.6);
+  animation: error-pulse 0.8s ease-in-out infinite;
+}
+
+.sync-error {
+  color: #fbbf24;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+@keyframes error-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+}
+
+.sync-pending {
+  color: #fbbf24;
+  font-size: 9px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ==================== Top Bar Feature Buttons ==================== */
+
+.topbar-features {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  justify-content: center;
+}
+
+.feature-btn {
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #e9eef5;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+
+.feature-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.feature-btn.active {
+  background: rgba(244, 114, 182, 0.25);
+  border-color: rgba(244, 114, 182, 0.4);
+}
+
+/* ==================== Notetank Styles ==================== */
+
+.notetank-shell {
+  --accent: #f472b6;
+  --accent-soft: rgba(244, 114, 182, 0.25);
+  --accent-surface: rgba(244, 114, 182, 0.12);
+}
+
+.notetank-shell .overlay-topbar-fixed {
+  background: linear-gradient(90deg, rgba(244, 114, 182, 0.2), rgba(167, 139, 250, 0.18));
+}
+
+.notetank-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.notetank-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.search-bar {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8fbff;
+  font-size: 12px;
+}
+
+.search-bar:focus {
+  outline: none;
+  border-color: var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent-surface);
+}
+
+.search-bar::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.add-note-btn {
+  white-space: nowrap;
+}
+
+.note-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.note-card {
+  background: var(--accent-surface);
+  border: 1px solid var(--accent-soft);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: transform 100ms ease, box-shadow 100ms ease;
+}
+
+.note-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.note-card.expanded {
+  background: rgba(244, 114, 182, 0.18);
+}
+
+.note-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.note-title-area {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.note-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-meta {
+  font-size: 10px;
+  color: #9db4c0;
+  flex-shrink: 0;
+}
+
+.note-content-preview {
+  margin: 6px 0 0 0;
+  font-size: 11px;
+  color: #b8c5d1;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.note-content-expanded {
+  margin: 10px 0 0 0;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #e0e8f0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Note Editor specific */
+.note-editor-shell {
+  height: 100vh;
+}
+
+.note-content-editor {
+  min-height: 160px;
+  resize: vertical;
+}
+
+/* ==================== Setup Page ==================== */
+
+.setup-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+}
+
+.setup-card {
+  width: 100%;
+  max-width: 460px;
+  background: rgba(22, 27, 34, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+.setup-title {
+  margin: 0 0 16px 0;
+  font-size: 22px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #5eead4, #60a5fa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.setup-description {
+  margin: 0 0 20px 0;
+  font-size: 13px;
+  color: #9db4c0;
+  line-height: 1.5;
+}
+
+.setup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e9eef5;
+}
+
+.input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.path-input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8fbff;
+  font-size: 13px;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.path-input:focus {
+  outline: none;
+  border-color: rgba(94, 234, 212, 0.5);
+  box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.15);
+}
+
+.path-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.browse-button {
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e9eef5;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 100ms ease;
+}
+
+.browse-button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.validation-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.validate-button {
+  padding: 8px 14px;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 8px;
+  background: rgba(96, 165, 250, 0.12);
+  color: #60a5fa;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 100ms ease;
+}
+
+.validate-button:hover:not(:disabled) {
+  background: rgba(96, 165, 250, 0.2);
+  border-color: rgba(96, 165, 250, 0.5);
+}
+
+.validate-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.validation-icon {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.validation-icon.validating {
+  color: #60a5fa;
+  animation: blink 1s infinite;
+}
+
+.validation-icon.valid {
+  color: #5eead4;
+}
+
+.validation-icon.invalid {
+  color: #f87171;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.validation-message {
+  font-size: 12px;
+}
+
+.validation-message.success {
+  color: #5eead4;
+}
+
+.validation-message.error {
+  color: #f87171;
+}
+
+.error-message {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  font-size: 12px;
+}
+
+.action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.save-button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #5eead4, #60a5fa);
+  color: #0a0c10;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.save-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(96, 165, 250, 0.3);
+}
+
+.save-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.setup-hint {
+  margin: 20px 0 0 0;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.4;
 }

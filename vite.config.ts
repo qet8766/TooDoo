@@ -115,6 +115,15 @@ export default defineConfig(async ({ command }) => {
     },
     build: {
       outDir: 'dist',
+      chunkSizeWarningLimit: 1000,
+      sourcemap: true,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          },
+        },
+      },
     },
     server: {
       host: DEV_SERVER_HOST,

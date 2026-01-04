@@ -9,3 +9,4 @@ export const broadcast = <T>(channel: string, payload?: T) => {
 }
 
 export const broadcastTaskChange = () => broadcast(IPC.TASKS_CHANGED)
+export const broadcastNotesChange = () => broadcast(IPC.NOTES_CHANGED)

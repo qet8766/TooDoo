@@ -1,3 +1,6 @@
 export { configureRendererTarget } from './base'
-export { createTooDooOverlay, getTooDooOverlay, closeTooDooOverlay } from './toodoo'
-export { createQuickAddWindow, getQuickAddWindow, closeQuickAddWindow } from './quick-add'
+export { createTooDooOverlay, closeTooDooOverlay, getTooDooOverlay } from './toodoo'
+export { createQuickAddWindow } from './quick-add'
+export { createNotetankOverlay, closeNotetankOverlay, getNotetankOverlay } from './notetank'
+export { createNoteEditorWindow, closeNoteEditorWindow } from './note-editor'
+export { createSetupWindow, closeSetupWindow, waitForSetupComplete, completeSetup } from './setup'

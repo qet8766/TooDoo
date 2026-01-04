@@ -1,12 +1,16 @@
 import type { TaskCategory } from '@shared/types'
 
-type ShortcutConfig = { accelerator: string; description: string; category: TaskCategory }
+type TaskShortcutConfig = { accelerator: string; description: string; category: TaskCategory }
+type NotetankShortcutConfig = { accelerator: string; description: string; category: null }
+type ShortcutConfig = TaskShortcutConfig | NotetankShortcutConfig
 
 const SHORTCUT_CONFIGS = {
-  'toodoo:short_term': { accelerator: 'Alt+Shift+S', description: 'Add short-term task', category: 'short_term' },
-  'toodoo:long_term': { accelerator: 'Alt+Shift+L', description: 'Add long-term task', category: 'long_term' },
+  'toodoo:scorching': { accelerator: 'CapsLock', description: 'Add scorching task', category: 'scorching' },
+  'toodoo:hot': { accelerator: 'Alt+Shift+H', description: 'Add hot task', category: 'hot' },
+  'toodoo:warm': { accelerator: 'Alt+Shift+W', description: 'Add warm task', category: 'warm' },
+  'toodoo:cool': { accelerator: 'Alt+Shift+C', description: 'Add cool task', category: 'cool' },
   'toodoo:project': { accelerator: 'Alt+Shift+P', description: 'Add project task', category: 'project' },
-  'toodoo:immediate': { accelerator: 'Alt+Shift+I', description: 'Add immediate task', category: 'immediate' },
+  'notetank:new': { accelerator: 'Alt+Shift+N', description: 'Add new note', category: null },
 } as const satisfies Record<string, ShortcutConfig>
 
 export type ShortcutId = keyof typeof SHORTCUT_CONFIGS
