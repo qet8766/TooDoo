@@ -9,6 +9,7 @@ import {
   initDatabase,
   updateTask,
   updateProjectNote,
+  reorderTask,
   getSyncStatus,
   triggerSync,
   stopSyncScheduler,
@@ -35,8 +36,6 @@ import {
   closeTooDooOverlay,
   getTooDooOverlay,
   createQuickAddWindow,
-  createNotetankOverlay,
-  getNotetankOverlay,
   createNoteEditorWindow,
   closeNoteEditorWindow,
   createSetupWindow,
@@ -123,6 +122,10 @@ handleSimple(IPC.TASKS_LIST, getTasks)
 handleWithBroadcast(IPC.TASKS_ADD, addTask)
 handleWithBroadcast(IPC.TASKS_UPDATE, updateTask)
 handleWithBroadcast(IPC.TASKS_DELETE, (id: string) => { deleteTask(id); return { id } })
+handleWithBroadcast(IPC.TASKS_REORDER, (p: { taskId: string; targetIndex: number }) => {
+  const success = reorderTask(p.taskId, p.targetIndex)
+  return { success }
+})
 handleWithBroadcast(IPC.TASKS_NOTE_ADD, addProjectNote)
 handleWithBroadcast(IPC.TASKS_NOTE_UPDATE, updateProjectNote)
 handleWithBroadcast(IPC.TASKS_NOTE_DELETE, (id: string) => { deleteProjectNote(id); return { id } })
@@ -145,25 +148,12 @@ ipcMain.on(IPC.NOTE_EDITOR_CLOSE, () => {
   closeNoteEditorWindow()
 })
 
-// Switch view between TooDoo and Notetank (replace/toggle approach)
+// Switch view by navigating within the same window (no flicker)
 ipcMain.on(IPC.SWITCH_VIEW, (_event: IpcMainEvent, view: 'toodoo' | 'notetank') => {
-  if (view === 'notetank') {
-    const toodoo = getTooDooOverlay()
-    const bounds = toodoo?.getBounds()
-    if (toodoo) toodoo.hide()
-    const notetank = createNotetankOverlay()
-    if (bounds) notetank.setBounds(bounds)
-    notetank.show()
-    notetank.focus()
-  } else {
-    const notetank = getNotetankOverlay()
-    const bounds = notetank?.getBounds()
-    if (notetank) notetank.hide()
-    const toodoo = createTooDooOverlay()
-    if (bounds) toodoo.setBounds(bounds)
-    toodoo.show()
-    toodoo.focus()
-  }
+  const win = getTooDooOverlay()
+  if (!win) return
+  // Navigate within the same window using hash routing
+  win.webContents.executeJavaScript(`window.location.hash = '/${view}'`)
 })
 
 // --- NAS Configuration Handlers ---
@@ -191,4 +181,27 @@ ipcMain.handle(IPC.SETUP_COMPLETE, async () => {
   // Reinitialize database with new NAS path
   reinitializeWithNas()
   completeSetup()
+})
+
+// --- Focus Mode (Minimize/Expand) ---
+const MINIMIZED_HEIGHT = 50
+let expandedHeight: number | null = null
+
+ipcMain.on(IPC.WINDOW_SET_MINIMIZED, (_event: IpcMainEvent, isMinimized: boolean) => {
+  const win = getTooDooOverlay()
+  if (!win) return
+
+  if (isMinimized) {
+    // Store current height before minimizing
+    const bounds = win.getBounds()
+    expandedHeight = bounds.height
+    win.setMinimumSize(bounds.width, MINIMIZED_HEIGHT)
+    win.setSize(bounds.width, MINIMIZED_HEIGHT)
+  } else {
+    // Restore to expanded height
+    const bounds = win.getBounds()
+    const targetHeight = expandedHeight ?? 460
+    win.setMinimumSize(300, 320)
+    win.setSize(bounds.width, targetHeight)
+  }
 })

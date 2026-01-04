@@ -566,6 +566,7 @@ export const addTask = (p: { id: string; title: string; description?: string; ca
   if (err) return { error: err }
 
   const now = Date.now()
+  // New tasks get sortOrder 0 (top of list), existing tasks shift down
   const task: Task = {
     id: p.id,
     title: p.title.trim(),
@@ -575,9 +576,16 @@ export const addTask = (p: { id: string; title: string; description?: string; ca
     createdAt: now,
     updatedAt: now,
     isDeleted: false,
+    sortOrder: 0,
   }
 
-  updateTasksCache(tasks => [task, ...tasks.filter(t => t.id !== task.id)])
+  updateTasksCache(tasks => {
+    // Shift sortOrder for tasks in same category
+    const shifted = tasks.map(t =>
+      t.category === task.category ? { ...t, sortOrder: (t.sortOrder ?? 0) + 1 } : t
+    )
+    return [task, ...shifted.filter(t => t.id !== task.id)]
+  })
   addPendingChange('tasks', task.id, 'create')
 
   // Trigger background sync
@@ -593,6 +601,8 @@ export const updateTask = (p: { id: string; title?: string; description?: string
   const existing = ensureCache().tasks.find(t => t.id === p.id)
   if (!existing) return null
 
+  const categoryChanged = p.category && p.category !== existing.category
+
   const updated: Task = {
     ...existing,
     title: p.title !== undefined ? p.title.trim() : existing.title,
@@ -600,15 +610,68 @@ export const updateTask = (p: { id: string; title?: string; description?: string
     category: p.category ?? existing.category,
     isDone: p.isDone ?? existing.isDone,
     updatedAt: Date.now(),
+    sortOrder: categoryChanged ? 0 : (existing.sortOrder ?? 0), // Move to top if category changed
   }
 
-  updateTasksCache(tasks => tasks.map(t => t.id === p.id ? updated : t))
+  updateTasksCache(tasks => {
+    if (categoryChanged) {
+      // Shift tasks in new category down
+      return tasks.map(t => {
+        if (t.id === p.id) return updated
+        if (t.category === p.category) return { ...t, sortOrder: (t.sortOrder ?? 0) + 1 }
+        return t
+      })
+    }
+    return tasks.map(t => t.id === p.id ? updated : t)
+  })
   addPendingChange('tasks', p.id, 'update')
 
   // Trigger background sync
   debouncedSync()
 
   return updated
+}
+
+export const reorderTask = (taskId: string, targetIndex: number): boolean => {
+  const cache = ensureCache()
+  const task = cache.tasks.find(t => t.id === taskId)
+  if (!task) return false
+
+  // Get tasks in the same category, sorted by sortOrder
+  const categoryTasks = cache.tasks
+    .filter(t => t.category === task.category && !t.isDeleted)
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+
+  const currentIndex = categoryTasks.findIndex(t => t.id === taskId)
+  if (currentIndex === -1 || currentIndex === targetIndex) return false
+
+  // Remove task from current position and insert at target
+  categoryTasks.splice(currentIndex, 1)
+  categoryTasks.splice(targetIndex, 0, task)
+
+  // Update sortOrder for all tasks in category
+  const updatedIds = new Set<string>()
+  categoryTasks.forEach((t, idx) => {
+    if (t.sortOrder !== idx) {
+      updatedIds.add(t.id)
+    }
+  })
+
+  updateTasksCache(tasks => tasks.map(t => {
+    if (t.category !== task.category) return t
+    const idx = categoryTasks.findIndex(ct => ct.id === t.id)
+    if (idx === -1) return t
+    return { ...t, sortOrder: idx, updatedAt: Date.now() }
+  }))
+
+  // Add pending changes for all reordered tasks
+  for (const id of updatedIds) {
+    addPendingChange('tasks', id, 'update')
+  }
+  addPendingChange('tasks', taskId, 'update')
+
+  debouncedSync()
+  return true
 }
 
 export const deleteTask = (id: string) => {

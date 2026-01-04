@@ -6,6 +6,8 @@ const FONT_SIZE_KEY = 'toodoo-font-size'
 const DEFAULT_FONT_SIZE = 14
 const SYNC_STATUS_POLL_MS = 5000
 const DELETE_ARM_TIMEOUT_MS = 2000
+const MINIMIZE_DURATION_MS = 60 * 60 * 1000 // 1 hour
+const MINIMIZE_CHECK_INTERVAL_MS = 60 * 1000 // check every minute
 
 type SyncStatus = {
   isOnline: boolean
@@ -29,6 +31,8 @@ const TooDooOverlay = () => {
     const saved = localStorage.getItem(FONT_SIZE_KEY)
     return saved ? parseInt(saved, 10) : DEFAULT_FONT_SIZE
   })
+  const [isMinimized, setIsMinimized] = useState(false)
+  const [minimizedAt, setMinimizedAt] = useState<number | null>(null)
 
   // Poll sync status
   useEffect(() => {
@@ -50,6 +54,19 @@ const TooDooOverlay = () => {
     setFontSize(newSize)
     localStorage.setItem(FONT_SIZE_KEY, String(newSize))
   }
+
+  // Focus mode: minimize/expand handlers
+  const handleMinimize = useCallback(() => {
+    setIsMinimized(true)
+    setMinimizedAt(Date.now())
+    window.toodoo.setMinimized(true)
+  }, [])
+
+  const handleExpand = useCallback(() => {
+    setIsMinimized(false)
+    setMinimizedAt(null)
+    window.toodoo.setMinimized(false)
+  }, [])
 
   const fetchTasks = useCallback(async () => {
     setIsLoading(true)
@@ -100,6 +117,20 @@ const TooDooOverlay = () => {
     return () => { timers.forEach(t => clearTimeout(t)) }
   }, [])
 
+  // Focus mode: auto-expand after 1 hour
+  useEffect(() => {
+    if (!isMinimized || !minimizedAt) return
+
+    const checkExpiry = () => {
+      if (Date.now() - minimizedAt >= MINIMIZE_DURATION_MS) {
+        handleExpand()
+      }
+    }
+
+    const interval = setInterval(checkExpiry, MINIMIZE_CHECK_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [isMinimized, minimizedAt, handleExpand])
+
   const armForDelete = useCallback((id: string) => {
     // Clear existing timer if any
     const existing = deleteTimers.current.get(id)
@@ -131,14 +162,21 @@ const TooDooOverlay = () => {
     })
   }, [])
 
+  const [dropTarget, setDropTarget] = useState<{ category: TaskCategory; index: number } | null>(null)
+
   const tasksByCategory = useMemo(() => {
     const buckets: Record<TaskCategory, Task[]> = {
       scorching: [], hot: [], warm: [], cool: [], project: []
     }
-    return tasks.reduce((acc, task) => {
+    const result = tasks.reduce((acc, task) => {
       if (acc[task.category]) acc[task.category].push(task)
       return acc
     }, buckets)
+    // Sort each category by sortOrder
+    for (const cat of Object.keys(result) as TaskCategory[]) {
+      result[cat].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    }
+    return result
   }, [tasks])
 
   const isScorchingMode = tasksByCategory.scorching.length > 0
@@ -146,16 +184,60 @@ const TooDooOverlay = () => {
     return isScorchingMode ? [CATEGORIES.scorching] : NORMAL_CATEGORIES.map(k => CATEGORIES[k])
   }, [isScorchingMode])
 
+  // Focus mode: auto-expand when scorching tasks appear
+  useEffect(() => {
+    if (isScorchingMode && isMinimized) {
+      handleExpand()
+    }
+  }, [isScorchingMode, isMinimized, handleExpand])
+
   const handleDragStart = useCallback((taskId: string) => (e: DragEvent<HTMLDivElement>) => {
     setDraggingTaskId(taskId)
     e.dataTransfer?.setData('text/plain', taskId)
     e.dataTransfer.effectAllowed = 'move'
   }, [])
 
+  const handleDragEnd = useCallback(() => {
+    setDraggingTaskId(null)
+    setDropTarget(null)
+  }, [])
+
+  const handleDragOverTask = useCallback((category: TaskCategory, index: number) => (e: DragEvent<HTMLElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    e.dataTransfer.dropEffect = 'move'
+    setDropTarget({ category, index })
+  }, [])
+
+  const handleDropOnTask = useCallback((category: TaskCategory, targetIndex: number) => async (e: DragEvent<HTMLElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const taskId = draggingTaskId || e.dataTransfer?.getData('text/plain')
+    setDraggingTaskId(null)
+    setDropTarget(null)
+    if (!taskId) return
+
+    const task = tasks.find(t => t.id === taskId)
+    if (!task) return
+
+    // If same category, reorder
+    if (task.category === category) {
+      await window.toodoo.tasks.reorder({ taskId, targetIndex })
+    } else {
+      // Move to different category (at target position)
+      const result = await window.toodoo.tasks.update({ id: taskId, category })
+      if (result && !('error' in result)) {
+        // After moving, reorder to specific position
+        await window.toodoo.tasks.reorder({ taskId, targetIndex })
+      }
+    }
+  }, [draggingTaskId, tasks])
+
   const handleDropOnCategory = useCallback((category: TaskCategory) => async (e: DragEvent<HTMLElement>) => {
     e.preventDefault()
     const taskId = draggingTaskId || e.dataTransfer?.getData('text/plain')
     setDraggingTaskId(null)
+    setDropTarget(null)
     if (!taskId) return
 
     const result = await window.toodoo.tasks.update({ id: taskId, category })
@@ -263,14 +345,41 @@ const TooDooOverlay = () => {
   }
 
   return (
-    <div className={`overlay-shell toodoo-compact ${isScorchingMode ? 'scorching-mode' : ''}`} style={{ fontSize: `${fontSize}px` }}>
+    <div className={`overlay-shell toodoo-compact ${isScorchingMode ? 'scorching-mode' : ''} ${isMinimized ? 'minimized' : ''}`} style={{ fontSize: `${fontSize}px` }}>
       <div className="overlay-topbar-fixed" title="Drag to move">
-        <div className="grip-dots"><span /><span /><span /></div>
-        <div className="topbar-features">
-          <button className="feature-btn no-drag" onClick={() => window.toodoo.switchView('notetank')} title="Switch to Notes">
-            Notes
-          </button>
-        </div>
+        {isMinimized ? (
+          <div className="minimized-bar no-drag">
+            {visibleCategories.map((cat) => (
+              <button
+                key={cat.key}
+                className={`minimized-dot tone-${cat.tone}`}
+                onClick={() => window.toodoo.openQuickAdd(cat.key)}
+                title={`Add ${cat.title} task`}
+              >
+                <span className="dot" />
+                <span className="count">{tasksByCategory[cat.key]?.length ?? 0}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <>
+            <button
+              className="scorching-dot no-drag"
+              onClick={() => window.toodoo.openQuickAdd('scorching')}
+              title="Add scorching task (CapsLock)"
+            >
+              <span className="dot" />
+              {tasksByCategory.scorching.length > 0 && (
+                <span className="count">{tasksByCategory.scorching.length}</span>
+              )}
+            </button>
+            <div className="topbar-features">
+              <button className="feature-btn no-drag" onClick={() => window.toodoo.switchView('notetank')} title="Switch to Notes">
+                Notes
+              </button>
+            </div>
+          </>
+        )}
         <div className="topbar-controls no-drag">
           {syncStatus && (
             <div
@@ -295,9 +404,20 @@ const TooDooOverlay = () => {
           )}
           <button className="font-btn" onClick={() => handleFontSizeChange(-1)}>A-</button>
           <button className="font-btn" onClick={() => handleFontSizeChange(1)}>A+</button>
+          {isMinimized ? (
+            <button className="font-btn focus-btn" onClick={handleExpand} title="Expand (or wait 1 hour)">▲</button>
+          ) : (
+            <button
+              className="font-btn focus-btn"
+              onClick={handleMinimize}
+              disabled={isScorchingMode}
+              title={isScorchingMode ? 'Clear scorching tasks first' : 'Focus mode (auto-expands in 1 hour)'}
+            >▼</button>
+          )}
         </div>
       </div>
 
+      {!isMinimized && (
       <div className="task-columns">
         {visibleCategories.map((cat) => {
           const list = tasksByCategory[cat.key] ?? []
@@ -312,15 +432,18 @@ const TooDooOverlay = () => {
 
               {!isLoading && list.length === 0 && <p className="muted compact-muted">Empty</p>}
               <div className="task-list">
-                {list.map((task) => {
+                {list.map((task, index) => {
                   const form = editing[task.id]
+                  const isDropTarget = dropTarget?.category === cat.key && dropTarget?.index === index
                   return (
                     <div
                       key={task.id}
-                      className={`task-card no-drag ${cat.key === 'project' ? 'project-card' : ''}`}
+                      className={`task-card no-drag ${cat.key === 'project' ? 'project-card' : ''} ${isDropTarget ? 'drop-target' : ''} ${draggingTaskId === task.id ? 'dragging' : ''}`}
                       draggable={!form}
                       onDragStart={handleDragStart(task.id)}
-                      onDragEnd={() => setDraggingTaskId(null)}
+                      onDragEnd={handleDragEnd}
+                      onDragOver={handleDragOverTask(cat.key, index)}
+                      onDrop={handleDropOnTask(cat.key, index)}
                     >
                       <div className="task-card-header">
                         <div className={`checkbox delete-checkbox ${armedForDelete.has(task.id) ? 'armed' : ''}`} onClick={() => handleTaskDeleteClick(task.id)}>
@@ -383,6 +506,7 @@ const TooDooOverlay = () => {
           )
         })}
       </div>
+      )}
       {noteModal.taskId && (
         <div className="modal-backdrop">
           <div className="modal-card no-drag">

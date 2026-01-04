@@ -4,6 +4,15 @@ import type { Note } from '@shared/types'
 const FONT_SIZE_KEY = 'notetank-font-size'
 const DEFAULT_FONT_SIZE = 14
 const DELETE_ARM_TIMEOUT_MS = 2000
+const SYNC_STATUS_POLL_MS = 5000
+
+type SyncStatus = {
+  isOnline: boolean
+  pendingCount: number
+  lastSyncAt: number
+  circuitBreakerOpen: boolean
+  nextRetryAt: number | null
+}
 
 const NotetankOverlay = () => {
   const [notes, setNotes] = useState<Note[]>([])
@@ -16,6 +25,22 @@ const NotetankOverlay = () => {
     const saved = localStorage.getItem(FONT_SIZE_KEY)
     return saved ? parseInt(saved, 10) : DEFAULT_FONT_SIZE
   })
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null)
+
+  // Poll sync status
+  useEffect(() => {
+    const fetchSyncStatus = async () => {
+      try {
+        const status = await window.toodoo.sync.getStatus()
+        setSyncStatus(status)
+      } catch (error) {
+        console.error('Failed to get sync status:', error)
+      }
+    }
+    fetchSyncStatus()
+    const interval = setInterval(fetchSyncStatus, SYNC_STATUS_POLL_MS)
+    return () => clearInterval(interval)
+  }, [])
 
   const handleFontSizeChange = (delta: number) => {
     const newSize = Math.max(10, Math.min(24, fontSize + delta))
@@ -126,13 +151,33 @@ const NotetankOverlay = () => {
   return (
     <div className="overlay-shell notetank-shell" style={{ fontSize: `${fontSize}px` }}>
       <div className="overlay-topbar-fixed" title="Drag to move">
-        <div className="grip-dots"><span /><span /><span /></div>
         <div className="topbar-features">
           <button className="feature-btn no-drag" onClick={switchToTasks} title="Switch to Tasks">
             Tasks
           </button>
         </div>
         <div className="topbar-controls no-drag">
+          {syncStatus && (
+            <div
+              className={`sync-indicator ${syncStatus.circuitBreakerOpen ? 'error' : syncStatus.isOnline ? 'online' : 'offline'}`}
+              title={
+                syncStatus.circuitBreakerOpen
+                  ? `Sync paused - too many failures. Click to retry.`
+                  : syncStatus.isOnline
+                    ? `Online${syncStatus.pendingCount > 0 ? ` - ${syncStatus.pendingCount} pending` : ''}`
+                    : 'Offline - changes will sync when connected'
+              }
+              onClick={syncStatus.circuitBreakerOpen ? () => window.toodoo.sync.resetCircuitBreaker() : undefined}
+              style={syncStatus.circuitBreakerOpen ? { cursor: 'pointer' } : undefined}
+            >
+              <span className="sync-dot" />
+              {syncStatus.circuitBreakerOpen ? (
+                <span className="sync-error">!</span>
+              ) : syncStatus.pendingCount > 0 ? (
+                <span className="sync-pending">{syncStatus.pendingCount}</span>
+              ) : null}
+            </div>
+          )}
           <button className="font-btn" onClick={() => handleFontSizeChange(-1)}>A-</button>
           <button className="font-btn" onClick={() => handleFontSizeChange(1)}>A+</button>
         </div>

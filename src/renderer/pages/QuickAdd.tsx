@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useLocation } from 'react-router-dom'
-import type { Task, TaskCategory } from '@shared/types'
+import type { TaskCategory } from '@shared/types'
 import { ALL_CATEGORIES, CATEGORIES } from '@shared/categories'
 
 const isValidCategory = (cat: string | null): cat is TaskCategory => {
@@ -36,15 +36,12 @@ const QuickAdd = () => {
       return
     }
 
-    const payload: Task = {
+    const payload = {
       id: crypto.randomUUID(),
       title: trimmed,
       description: descTrimmed || undefined,
       category,
       isDone: false,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      isDeleted: false,
     }
 
     try {

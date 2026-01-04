@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Note, ProjectNote, Task } from '@shared/types'
-import { IPC, type ErrorResponse, type NoteCreatePayload, type NoteUpdatePayload, type ProjectNoteCreatePayload, type ProjectNoteUpdatePayload, type TaskCreatePayload, type TaskUpdatePayload } from '@shared/ipc'
+import { IPC, type ErrorResponse, type NoteCreatePayload, type NoteUpdatePayload, type ProjectNoteCreatePayload, type ProjectNoteUpdatePayload, type TaskCreatePayload, type TaskUpdatePayload, type TaskReorderPayload } from '@shared/ipc'
 
 // Tasks API
 const tasksApi = {
@@ -8,6 +8,7 @@ const tasksApi = {
   add: (payload: TaskCreatePayload) => ipcRenderer.invoke(IPC.TASKS_ADD, payload) as Promise<Task | ErrorResponse>,
   update: (payload: TaskUpdatePayload) => ipcRenderer.invoke(IPC.TASKS_UPDATE, payload) as Promise<Task | null | ErrorResponse>,
   remove: (id: string) => ipcRenderer.invoke(IPC.TASKS_DELETE, id) as Promise<{ id: string }>,
+  reorder: (payload: TaskReorderPayload) => ipcRenderer.invoke(IPC.TASKS_REORDER, payload) as Promise<{ success: boolean }>,
   addNote: (payload: ProjectNoteCreatePayload) => ipcRenderer.invoke(IPC.TASKS_NOTE_ADD, payload) as Promise<ProjectNote | ErrorResponse>,
   updateNote: (payload: ProjectNoteUpdatePayload) => ipcRenderer.invoke(IPC.TASKS_NOTE_UPDATE, payload) as Promise<ProjectNote | null | ErrorResponse>,
   removeNote: (id: string) => ipcRenderer.invoke(IPC.TASKS_NOTE_DELETE, id) as Promise<{ id: string }>,
@@ -81,7 +82,12 @@ const noteEditorApi = {
 }
 
 // Switch between TooDoo and Notetank views
+// Note: For seamless navigation, prefer using window.location.hash directly in renderer
+// This IPC-based method is kept for compatibility but may cause flicker
 const switchView = (view: 'toodoo' | 'notetank') => ipcRenderer.send(IPC.SWITCH_VIEW, view)
+
+// Focus mode - minimize/expand overlay window
+const setMinimized = (isMinimized: boolean) => ipcRenderer.send(IPC.WINDOW_SET_MINIMIZED, isMinimized)
 
 // Exposed API
 const api = {
@@ -91,6 +97,7 @@ const api = {
   onNotesChanged,
   noteEditor: noteEditorApi,
   switchView,
+  setMinimized,
   config: configApi,
   sync: syncApi,
   setup: setupApi,

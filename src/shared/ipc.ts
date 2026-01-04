@@ -7,6 +7,7 @@ export const IPC = {
   TASKS_ADD: 'tasks:add',
   TASKS_UPDATE: 'tasks:update',
   TASKS_DELETE: 'tasks:delete',
+  TASKS_REORDER: 'tasks:reorder',
   TASKS_NOTE_ADD: 'tasks:note:add',
   TASKS_NOTE_UPDATE: 'tasks:note:update',
   TASKS_NOTE_DELETE: 'tasks:note:delete',
@@ -36,6 +37,7 @@ export const IPC = {
   NOTE_EDITOR_OPEN: 'note-editor:open',
   NOTE_EDITOR_CLOSE: 'note-editor:close',
   SWITCH_VIEW: 'switch-view',
+  WINDOW_SET_MINIMIZED: 'window:set-minimized',
 } as const
 
 export type TaskCreatePayload = {
@@ -80,3 +82,9 @@ export type NoteUpdatePayload = {
 
 // Error response type for validation failures
 export type ErrorResponse = { error: string }
+
+// Reorder payload - moves a task to a new position within a category
+export type TaskReorderPayload = {
+  taskId: string
+  targetIndex: number
+}

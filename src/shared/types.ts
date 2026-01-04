@@ -18,6 +18,7 @@ export interface Task {
   createdAt: number
   updatedAt: number
   isDeleted: boolean
+  sortOrder: number
   projectNotes?: ProjectNote[]
 }
 
