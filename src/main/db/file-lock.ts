@@ -15,12 +15,30 @@ const LOCK_STALE_TIMEOUT_MS = 30_000  // Lock is considered stale after 30 secon
 const LOCK_ACQUIRE_TIMEOUT_MS = 5_000  // Wait up to 5 seconds to acquire lock
 const LOCK_RETRY_INTERVAL_MS = 100     // Retry every 100ms
 
+// Network error codes that indicate NAS is unreachable (not just locked)
+const NETWORK_ERROR_CODES = new Set([
+  'ENETUNREACH',   // Network is unreachable
+  'ETIMEDOUT',     // Connection timed out
+  'ENOTFOUND',     // Host not found
+  'ECONNREFUSED',  // Connection refused
+  'EHOSTUNREACH',  // Host unreachable
+  'ECONNRESET',    // Connection reset
+  'EPIPE',         // Broken pipe
+])
+
 // --- Utility ---
 
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
 const generateNonce = (): string => {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+}
+
+const isNetworkError = (err: unknown): boolean => {
+  if (err instanceof Error && 'code' in err && typeof err.code === 'string') {
+    return NETWORK_ERROR_CODES.has(err.code)
+  }
+  return false
 }
 
 // --- Lock File Operations ---
@@ -35,25 +53,35 @@ const readLockInfo = (lockPath: string): LockInfo | null => {
   }
 }
 
+type LockCreateResult =
+  | { created: true }
+  | { created: false; reason: 'exists' | 'network' | 'other'; code?: string }
+
 /**
  * Attempt to create lock file exclusively using 'wx' flag.
  * This is atomic on most file systems - file is only created if it doesn't exist.
  */
-const tryCreateLockExclusive = (lockPath: string, info: LockInfo): boolean => {
+const tryCreateLockExclusive = (lockPath: string, info: LockInfo): LockCreateResult => {
   let fd: number | null = null
   try {
     // 'wx' flag: Open for writing, fail if file exists (exclusive creation)
     fd = fs.openSync(lockPath, 'wx')
     fs.writeSync(fd, JSON.stringify(info))
-    return true
+    return { created: true }
   } catch (err: unknown) {
     // EEXIST means file already exists - lock is held
     if (err instanceof Error && 'code' in err && err.code === 'EEXIST') {
-      return false
+      return { created: false, reason: 'exists' }
+    }
+    // Network errors - NAS is unreachable
+    if (isNetworkError(err)) {
+      const code = err instanceof Error && 'code' in err ? String(err.code) : undefined
+      console.error('Network error creating lock file:', err)
+      return { created: false, reason: 'network', code }
     }
     // Other errors (permissions, etc.) - log and fail
     console.error('Failed to create lock file:', err)
-    return false
+    return { created: false, reason: 'other' }
   } finally {
     if (fd !== null) {
       try { fs.closeSync(fd) } catch { /* ignore close errors */ }
@@ -119,9 +147,10 @@ export const acquireLock = async (
   lockPath: string,
   machineId: string,
   timeout: number = LOCK_ACQUIRE_TIMEOUT_MS
-): Promise<{ acquired: boolean; error?: string; nonce?: string }> => {
+): Promise<{ acquired: boolean; error?: string; nonce?: string; networkError?: boolean }> => {
   const startTime = Date.now()
   const ourNonce = generateNonce()
+  let encounteredNetworkError = false
 
   while (Date.now() - startTime < timeout) {
     const existingLock = readLockInfo(lockPath)
@@ -135,12 +164,24 @@ export const acquireLock = async (
         nonce: ourNonce,
       }
 
-      if (tryCreateLockExclusive(lockPath, lockInfo)) {
+      const result = tryCreateLockExclusive(lockPath, lockInfo)
+      if (result.created) {
         // Successfully created lock exclusively - we own it
         return { acquired: true, nonce: ourNonce }
       }
 
-      // File was created by someone else between our check and create
+      // Track network errors - if we see one, flag it
+      if (result.reason === 'network') {
+        encounteredNetworkError = true
+        // Don't retry on network errors - NAS is unreachable
+        return {
+          acquired: false,
+          error: `Network error: ${result.code || 'NAS unreachable'}`,
+          networkError: true,
+        }
+      }
+
+      // File was created by someone else between our check and create (EEXIST)
       // This is the race we're handling - just retry
       await sleep(LOCK_RETRY_INTERVAL_MS)
       continue
@@ -180,6 +221,7 @@ export const acquireLock = async (
     error: lockOwner
       ? `Lock held by machine ${lockOwner.machineId} since ${new Date(lockOwner.acquiredAt).toISOString()}`
       : 'Failed to acquire lock (unknown reason)',
+    networkError: encounteredNetworkError,
   }
 }
 

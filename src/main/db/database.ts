@@ -338,11 +338,11 @@ const syncWithNas = async (): Promise<boolean> => {
   const machineId = getMachineId()
 
   // Try to acquire lock
-  const { acquired, error } = await acquireLock(nasLockPath, machineId)
+  const { acquired, error, networkError } = await acquireLock(nasLockPath, machineId)
   if (!acquired) {
     console.warn('Could not acquire NAS lock:', error)
-    // NAS might still be online, just locked
-    isNasOnline = true
+    // If it's a network error, NAS is unreachable; otherwise it's just locked by another process
+    isNasOnline = !networkError
     return false
   }
 
