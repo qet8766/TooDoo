@@ -47,6 +47,11 @@ import {
 import { registerShortcut, unregisterShortcut, SHORTCUTS } from './shortcuts'
 import { handleWithBroadcast, handleWithNotesBroadcast, handleSimple } from './ipc-factory'
 
+// Prevent cache locking errors on Windows
+// These must be set before app.whenReady()
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
+app.commandLine.appendSwitch('disable-http-cache')
+
 // Only use dev server URL if explicitly set by Vite (not a fallback)
 const devServerUrl =
   process.env.VITE_DEV_SERVER_URL || process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL || undefined

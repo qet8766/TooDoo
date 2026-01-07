@@ -38,7 +38,7 @@ const TooDooOverlay = () => {
 
   // Notify main process when calendar opens/closes to resize window
   // Use a ref to track what we last sent to avoid duplicate IPC calls
-  const lastCalendarStateRef = useRef<boolean | null>(null)
+  const lastCalendarStateRef = useRef(false)
   useEffect(() => {
     // Only send IPC if state actually changed from what we last sent
     if (lastCalendarStateRef.current !== isCalendarOpen) {
