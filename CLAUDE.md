@@ -16,6 +16,13 @@ npm run dev              # Development server with hot reload (lax types)
 npm run build            # TypeScript check + Vite build (RUN OFTEN to catch strict type errors)
 npm run electron:build   # Full build + package .exe/.nsis
 npm run lint             # ESLint
+
+# Testing
+npm run test             # Run unit tests (Vitest)
+npm run test:watch       # Unit tests in watch mode
+npm run test:coverage    # Unit tests with coverage report
+npm run test:playwright  # Component tests (Playwright)
+npm run test:all         # Run unit + component tests
 ```
 
 ## General Instructions & Best Practices
@@ -40,6 +47,9 @@ Windows:
 
 - **Overlay** (`#/toodoo`) — main task view with 4 category columns (hot, warm, cool, project) or scorching mode
 - **Quick-add popup** (`#/quick-add?category=...`) — cursor-positioned form opened via global hotkeys
+- **Notetank** (`#/notetank`) — separate notes management overlay (independent of tasks)
+- **Note Editor** (`#/note-editor?id=...`) — popup for editing individual notes
+- **Setup** (`#/setup`) — first-run NAS path configuration wizard
 
 IPC flow: renderer calls `window.toodoo.*` → preload uses `ipcRenderer.invoke/send` → main handles via `ipcMain.handle/on` → broadcasts `tasks:changed` to all windows.
 
@@ -86,10 +96,38 @@ Defined in `src/main/shortcuts/definitions.ts`:
 - `src/renderer/pages/QuickAdd.tsx` — quick-add popup UI
 - `src/renderer/pages/Setup.tsx` — first-run NAS path configuration
 - `src/shared/types.ts` — `Task`, `ProjectNote`, `TaskCategory` types
-- `src/shared/ipc.ts` — IPC channel definitions (CONFIG_*, NAS_*)
+- `src/shared/ipc.ts` — IPC channel definitions (all `IPC.*` constants)
+- `src/shared/categories.ts` — category colors and display logic
+- `src/shared/category-calculator.ts` — auto-promotion logic for scheduled tasks
+
+## Task Scheduling
+
+Tasks can have calendar scheduling via `scheduledDate` and optional `scheduledTime` fields:
+
+- Tasks auto-promote to hotter categories as their scheduled date approaches (see `category-calculator.ts`)
+- `baseCategory` stores the original category for scheduled tasks
+- `userPromoted: true` prevents auto-demotion when user manually changes category
+
+## Path Aliases
+
+The project uses TypeScript path aliases (configured in `tsconfig.json` and `vitest.config.ts`):
+
+- `@shared/*` → `src/shared/*`
+- `@main/*` → `src/main/*`
+- `@renderer/*` → `src/renderer/*`
 
 ## Notes for Changes
 
 - **Update Triad:** When adding APIs, update `src/preload/index.ts`, `src/preload/types.d.ts`, AND `src/main/index.ts`.
+- **IPC Constants:** All IPC channels are defined in `src/shared/ipc.ts` — always use `IPC.*` constants, never string literals.
 - **Dependency Check:** If adding a library, ensure it is in `dependencies` (not `devDependencies`) if it is needed at runtime (e.g., `sqlite3`), otherwise the build will crash.
 - **Renderer API:** The preload exposes `window.toodoo` (not `window.irodori`).
+- **Test Mocking:** For renderer tests, use `tests/mocks.ts` which provides `injectToodooMock()` to mock the preload API.
+
+## Troubleshooting
+
+**App won't start (single-instance lock)**
+If the app fails to start silently, another instance is likely running. Ask the user to:
+1. Check Task Manager for existing `TooDoo` or `electron` processes
+2. Close any running instances
+3. Try starting again

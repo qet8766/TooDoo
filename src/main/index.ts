@@ -47,6 +47,25 @@ import {
 import { registerShortcut, unregisterShortcut, SHORTCUTS } from './shortcuts'
 import { handleWithBroadcast, handleWithNotesBroadcast, handleSimple } from './ipc-factory'
 
+// --- Single Instance Lock ---
+// Prevent multiple instances (causes shortcut conflicts, sync issues, data corruption)
+const gotTheLock = app.requestSingleInstanceLock()
+
+if (!gotTheLock) {
+  console.log('Another instance is already running. Quitting.')
+  app.quit()
+} else {
+  app.on('second-instance', (_event: Electron.Event, _commandLine: string[], _workingDirectory: string) => {
+    // Focus existing overlay when second instance is attempted
+    const overlay = getTooDooOverlay()
+    if (overlay) {
+      if (overlay.isMinimized()) overlay.restore()
+      overlay.focus()
+      overlay.show()
+    }
+  })
+}
+
 // Prevent cache locking errors on Windows
 // These must be set before app.whenReady()
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
