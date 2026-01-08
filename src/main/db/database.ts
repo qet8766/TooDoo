@@ -12,12 +12,14 @@ import {
   setLastSyncAt,
   getLastSyncAt,
 } from './config'
+import { broadcastTaskChange, broadcastNotesChange } from '../broadcast'
 // Note: file-lock.ts kept for potential future multi-user support
 
 // --- Constants & Types ---
 
 const SYNC_INTERVAL_MS = 5_000
 const SYNC_DEBOUNCE_MS = 1_000  // Debounce rapid sync triggers
+const POLL_INTERVAL_MS = 30_000  // Poll for remote changes every 30s
 const MAX_PAYLOAD_SIZE = 100_000
 
 // Circuit breaker constants
@@ -253,6 +255,7 @@ let isNasOnline = false
 let syncInProgress = false
 let syncInterval: ReturnType<typeof setInterval> | null = null
 let syncDebounceTimeout: ReturnType<typeof setTimeout> | null = null
+let pollInterval: ReturnType<typeof setInterval> | null = null
 let syncErrorCount = 0
 let currentBackoffMs = MIN_BACKOFF_MS
 let circuitBreakerOpen = false
@@ -431,7 +434,9 @@ export const getSyncStatus = () => ({
 export const startSyncScheduler = () => {
   if (syncInterval) return
   syncInterval = setInterval(() => {
-    if (!syncInProgress && isCircuitBreakerAllowing()) {
+    // Only sync if we have pending changes to upload
+    const hasPending = ensureCache().pendingChanges.length > 0
+    if (hasPending && !syncInProgress && isCircuitBreakerAllowing()) {
       syncInProgress = true
       syncWithNas()
         .then(success => success ? onSyncSuccess() : onSyncFailure())
@@ -439,18 +444,76 @@ export const startSyncScheduler = () => {
         .finally(() => { syncInProgress = false })
     }
   }, SYNC_INTERVAL_MS)
-  // Initial sync
-  syncInProgress = true
-  syncWithNas()
-    .then(success => success ? onSyncSuccess() : onSyncFailure())
-    .catch(err => onSyncFailure(err))
-    .finally(() => { syncInProgress = false })
+  // Initial sync to upload any pending changes from last session
+  if (ensureCache().pendingChanges.length > 0) {
+    syncInProgress = true
+    syncWithNas()
+      .then(success => success ? onSyncSuccess() : onSyncFailure())
+      .catch(err => onSyncFailure(err))
+      .finally(() => { syncInProgress = false })
+  }
 }
 
 export const stopSyncScheduler = () => {
   if (syncInterval) {
     clearInterval(syncInterval)
     syncInterval = null
+  }
+  stopPollScheduler()
+}
+
+// --- Poll for Remote Changes ---
+// Separate from sync - only downloads, never overwrites local pending changes
+
+const pollNasForUpdates = async (): Promise<boolean> => {
+  const nasPath = getNasPath()
+  if (!nasPath) return false
+
+  const localCache = ensureCache()
+
+  // Don't overwrite if we have pending local changes
+  if (localCache.pendingChanges.length > 0) return false
+
+  try {
+    const nasData = await readFromNas()
+    if (!nasData) {
+      isNasOnline = false
+      return false
+    }
+
+    isNasOnline = true
+
+    // Only update if NAS is newer than our last sync
+    if (nasData.lastModifiedAt > localCache.lastNasSyncAt) {
+      console.log('Polling: NAS has newer data, updating local cache')
+      localCache.tasks = nasData.tasks
+      localCache.notes = nasData.notes
+      localCache.lastNasSyncAt = Date.now()
+      saveCache()
+      broadcastTaskChange()
+      broadcastNotesChange()
+    }
+
+    return true
+  } catch (err) {
+    console.error('Poll error:', err)
+    return false
+  }
+}
+
+const startPollScheduler = () => {
+  if (pollInterval) return
+  pollInterval = setInterval(() => {
+    pollNasForUpdates()
+  }, POLL_INTERVAL_MS)
+  // Initial poll to get latest from NAS
+  pollNasForUpdates()
+}
+
+const stopPollScheduler = () => {
+  if (pollInterval) {
+    clearInterval(pollInterval)
+    pollInterval = null
   }
 }
 
@@ -499,9 +562,10 @@ export const resetCircuitBreaker = () => {
 
 export const initDatabase = () => {
   loadCache()
-  // Only start sync if NAS is configured
+  // Only start sync/poll if NAS is configured
   if (getNasPath()) {
     startSyncScheduler()
+    startPollScheduler()
   }
 }
 
@@ -876,10 +940,11 @@ export const deleteNote = (id: string) => {
 // --- Re-initialize after setup ---
 
 export const reinitializeWithNas = () => {
-  // Reload cache and start sync
+  // Reload cache and start sync/poll
   loadCache()
   if (getNasPath()) {
     startSyncScheduler()
+    startPollScheduler()
   }
 }
 
