@@ -48,21 +48,29 @@ import { registerShortcut, unregisterShortcut, SHORTCUTS } from './shortcuts'
 import { handleWithBroadcast, handleWithNotesBroadcast, handleSimple } from './ipc-factory'
 
 // --- Single Instance Lock ---
-// Prevent multiple instances (causes shortcut conflicts, sync issues, data corruption)
+// When a new instance starts, the OLD instance quits to let the new one take over.
+// This is ideal for development: new code always runs, old instance steps aside.
 const gotTheLock = app.requestSingleInstanceLock()
 
 if (!gotTheLock) {
-  console.log('Another instance is already running. Quitting.')
-  app.quit()
+  // Another instance has the lock - it will quit when it receives our signal.
+  // Wait briefly for it to release the lock, then retry.
+  console.log('Another instance detected. Waiting for it to quit...')
+  setTimeout(() => {
+    const retryLock = app.requestSingleInstanceLock()
+    if (retryLock) {
+      console.log('Lock acquired after retry. Starting app.')
+      // Lock acquired - the app will continue normally via whenReady
+    } else {
+      console.log('Could not acquire lock after retry. Quitting.')
+      app.quit()
+    }
+  }, 500)
 } else {
   app.on('second-instance', (_event: Electron.Event, _commandLine: string[], _workingDirectory: string) => {
-    // Focus existing overlay when second instance is attempted
-    const overlay = getTooDooOverlay()
-    if (overlay) {
-      if (overlay.isMinimized()) overlay.restore()
-      overlay.focus()
-      overlay.show()
-    }
+    // New instance is starting - quit to let it take over
+    console.log('New instance detected. Quitting to let it take over.')
+    app.quit()
   })
 }
 

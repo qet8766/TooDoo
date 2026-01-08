@@ -47,7 +47,7 @@ Windows:
 
 - **Overlay** (`#/toodoo`) — main task view with 4 category columns (hot, warm, cool, project) or scorching mode
 - **Quick-add popup** (`#/quick-add?category=...`) — cursor-positioned form opened via global hotkeys
-- **Notetank** (`#/notetank`) — separate notes management overlay (independent of tasks)
+- **Notetank** (`#/notetank`) — separate notes management overlay (independent from tasks)
 - **Note Editor** (`#/note-editor?id=...`) — popup for editing individual notes
 - **Setup** (`#/setup`) — first-run NAS path configuration wizard
 
@@ -124,10 +124,10 @@ The project uses TypeScript path aliases (configured in `tsconfig.json` and `vit
 - **Renderer API:** The preload exposes `window.toodoo` (not `window.irodori`).
 - **Test Mocking:** For renderer tests, use `tests/mocks.ts` which provides `injectToodooMock()` to mock the preload API.
 
-## Troubleshooting
+## Single Instance Behavior
 
-**App won't start (single-instance lock)**
-If the app fails to start silently, another instance is likely running. Ask the user to:
-1. Check Task Manager for existing `TooDoo` or `electron` processes
-2. Close any running instances
-3. Try starting again
+The app enforces single-instance mode. When a new instance starts:
+1. The **old** instance automatically quits
+2. The **new** instance takes over after ~500ms
+
+This is ideal for development: running `npm run dev` again will always start fresh with your latest code.
