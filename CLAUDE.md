@@ -9,6 +9,15 @@ Actively use typescript.
 
 **Stack:** Electron + React 19 + TypeScript + Vite (`vite-plugin-electron`) + Zustand.
 
+## Usage Model
+
+TooDoo is a **single-user personal tool** for eteriny (the developer). This simplifies many design decisions:
+
+- **Per-machine lock:** Single instance per machine prevents development conflicts
+- **Multi-machine support:** Runs on multiple Windows machines (future: Android) via NAS sync
+- **No concurrent edits:** Since there's only one user, edits won't happen simultaneously across machines (30+ second gap guaranteed)
+- **Simple sync:** Last-write-wins (LWW) with 30-second sync interval is safe—no complex merge logic needed
+
 ## Commands
 
 ```bash
