@@ -85,13 +85,13 @@ First-run setup:
 
 ## Hotkeys
 
-Defined in `src/main/shortcuts/definitions.ts`:
+Defined in `src/main/shortcuts/definitions.ts`. Uses `Alt+Shift+[QWERT]` pattern (left-to-right = highest-to-lowest priority):
 
-- `CapsLock` — quick add **Scorching** task (white, most urgent - panic button!)
-- `Alt+Shift+H` — quick add **H**ot task (red, high priority)
-- `Alt+Shift+W` — quick add **W**arm task (yellow, moderate priority)
-- `Alt+Shift+C` — quick add **C**ool task (blue, low priority/someday)
-- `Alt+Shift+P` — quick add **P**roject task (violet, long-term initiatives)
+- `Alt+Shift+Q` — quick add **Scorching** task (white, most urgent)
+- `Alt+Shift+W` — quick add **Hot** task (red, high priority)
+- `Alt+Shift+E` — quick add **Warm** task (yellow, moderate priority)
+- `Alt+Shift+R` — quick add **Cool** task (blue, low priority/someday)
+- `Alt+Shift+T` — quick add **Project** task (violet, long-term initiatives)
 
 ## Key Files
 

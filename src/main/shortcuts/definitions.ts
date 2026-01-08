@@ -5,11 +5,11 @@ type NotetankShortcutConfig = { accelerator: string; description: string; catego
 type ShortcutConfig = TaskShortcutConfig | NotetankShortcutConfig
 
 const SHORTCUT_CONFIGS = {
-  'toodoo:scorching': { accelerator: 'CapsLock', description: 'Add scorching task', category: 'scorching' },
-  'toodoo:hot': { accelerator: 'Alt+Shift+H', description: 'Add hot task', category: 'hot' },
-  'toodoo:warm': { accelerator: 'Alt+Shift+W', description: 'Add warm task', category: 'warm' },
-  'toodoo:cool': { accelerator: 'Alt+Shift+C', description: 'Add cool task', category: 'cool' },
-  'toodoo:project': { accelerator: 'Alt+Shift+P', description: 'Add project task', category: 'project' },
+  'toodoo:scorching': { accelerator: 'Alt+Shift+Q', description: 'Add scorching task', category: 'scorching' },
+  'toodoo:hot': { accelerator: 'Alt+Shift+W', description: 'Add hot task', category: 'hot' },
+  'toodoo:warm': { accelerator: 'Alt+Shift+E', description: 'Add warm task', category: 'warm' },
+  'toodoo:cool': { accelerator: 'Alt+Shift+R', description: 'Add cool task', category: 'cool' },
+  'toodoo:project': { accelerator: 'Alt+Shift+T', description: 'Add project task', category: 'project' },
   'notetank:new': { accelerator: 'Alt+Shift+N', description: 'Add new note', category: null },
 } as const satisfies Record<string, ShortcutConfig>
 
