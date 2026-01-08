@@ -7,13 +7,12 @@ import { calculateEffectiveCategory, getTasksNeedingUpdate } from '@shared/categ
 import {
   getNasPath,
   getNasStorePath,
-  getNasLockPath,
   getLocalCachePath,
   getMachineId,
   setLastSyncAt,
   getLastSyncAt,
 } from './config'
-import { acquireLock, releaseLock } from './file-lock'
+// Note: file-lock.ts kept for potential future multi-user support
 
 // --- Constants & Types ---
 
@@ -329,23 +328,10 @@ const syncWithNas = async (): Promise<boolean> => {
     return false
   }
 
-  const nasLockPath = getNasLockPath()
-  if (!nasLockPath) {
-    isNasOnline = false
-    return false
-  }
-
   const machineId = getMachineId()
 
-  // Try to acquire lock
-  const { acquired, error, networkError } = await acquireLock(nasLockPath, machineId)
-  if (!acquired) {
-    console.warn('Could not acquire NAS lock:', error)
-    // If it's a network error, NAS is unreachable; otherwise it's just locked by another process
-    isNasOnline = !networkError
-    return false
-  }
-
+  // No file locking - single user across machines, LWW merge handles conflicts
+  // Atomic writes (temp file + rename) prevent corruption
   try {
     // Read current NAS data
     const nasData = await readFromNas()
@@ -395,8 +381,6 @@ const syncWithNas = async (): Promise<boolean> => {
   } catch (err) {
     console.error('Sync error:', err)
     return false
-  } finally {
-    releaseLock(nasLockPath, machineId)
   }
 }
 
