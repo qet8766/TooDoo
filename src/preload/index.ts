@@ -14,36 +14,6 @@ const tasksApi = {
   removeNote: (id: string) => ipcRenderer.invoke(IPC.TASKS_NOTE_DELETE, id) as Promise<{ id: string }>,
 }
 
-// NAS Configuration API
-const configApi = {
-  get: () => ipcRenderer.invoke(IPC.CONFIG_GET) as Promise<{ nasPath: string | null; machineId: string; lastSyncAt: number }>,
-  setNasPath: (path: string) => ipcRenderer.invoke(IPC.CONFIG_SET_NAS_PATH, path) as Promise<{ success: boolean; error?: string }>,
-  validatePath: (path: string) => ipcRenderer.invoke(IPC.CONFIG_VALIDATE_PATH, path) as Promise<{ valid: boolean; error?: string }>,
-  needsSetup: () => ipcRenderer.invoke(IPC.CONFIG_NEEDS_SETUP) as Promise<boolean>,
-  reload: () => ipcRenderer.invoke(IPC.CONFIG_RELOAD) as Promise<{ nasPath: string | null; machineId: string; lastSyncAt: number }>,
-}
-
-// NAS Sync API
-type SyncStatus = {
-  isOnline: boolean
-  pendingCount: number
-  lastSyncAt: number
-  circuitBreakerOpen: boolean
-  nextRetryAt: number | null
-}
-
-const syncApi = {
-  getStatus: () => ipcRenderer.invoke(IPC.NAS_SYNC_STATUS) as Promise<SyncStatus>,
-  trigger: () => ipcRenderer.invoke(IPC.NAS_TRIGGER_SYNC) as Promise<void>,
-  resetCircuitBreaker: () => ipcRenderer.invoke(IPC.NAS_RESET_CIRCUIT_BREAKER) as Promise<void>,
-}
-
-// Setup API
-const setupApi = {
-  browseFolder: () => ipcRenderer.invoke(IPC.SETUP_BROWSE_FOLDER) as Promise<string | null>,
-  complete: () => ipcRenderer.invoke(IPC.SETUP_COMPLETE) as Promise<void>,
-}
-
 // IPC Event Listeners
 const onTasksChanged = (callback: () => void): (() => void) => {
   ipcRenderer.on(IPC.TASKS_CHANGED, callback)
@@ -106,9 +76,6 @@ const api = {
   setMinimized,
   setCalendarOpen,
   resizeWindow,
-  config: configApi,
-  sync: syncApi,
-  setup: setupApi,
   toggleOverlay,
   openQuickAdd,
 }

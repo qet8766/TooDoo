@@ -1,616 +1,144 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import { app } from '../electron'
+import {
+  doc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  type Unsubscribe,
+} from 'firebase/firestore'
 import type { Note, ProjectNote, Task, TaskCategory } from '@shared/types'
 import { ALL_CATEGORIES } from '@shared/categories'
 import { calculateEffectiveCategory, getTasksNeedingUpdate } from '@shared/category-calculator'
-import {
-  getNasPath,
-  getNasStorePath,
-  getLocalCachePath,
-  getMachineId,
-  setLastSyncAt,
-  getLastSyncAt,
-} from './config'
+import { initFirebase, getTasksCollection, getNotesCollection } from './firebase'
 import { broadcastTaskChange, broadcastNotesChange } from '../broadcast'
-// Note: file-lock.ts kept for potential future multi-user support
 
-// --- Constants & Types ---
+// --- Constants ---
 
-const SYNC_INTERVAL_MS = 5_000
-const SYNC_DEBOUNCE_MS = 1_000  // Debounce rapid sync triggers
-const POLL_INTERVAL_MS = 30_000  // Poll for remote changes every 30s
 const MAX_PAYLOAD_SIZE = 100_000
 
-// Circuit breaker constants
-const MAX_CONSECUTIVE_ERRORS = 5
-const MIN_BACKOFF_MS = 30_000       // Start with 30s
-const MAX_BACKOFF_MS = 5 * 60_000   // Max 5 minutes
-
-type PendingChange = {
-  id: string
-  table: 'tasks' | 'project_notes' | 'notes'
-  recordId: string
-  operation: 'create' | 'update' | 'delete'
-  timestamp: number
-}
-
-type LocalCache = {
-  tasks: Task[]
-  notes: Note[]
-  pendingChanges: PendingChange[]
-  lastNasSyncAt: number
-}
-
-// --- Cache State ---
-
-let cache: LocalCache | null = null
-let cachePath: string | null = null
-
-const getDefaultCache = (): LocalCache => ({
-  tasks: [],
-  notes: [],
-  pendingChanges: [],
-  lastNasSyncAt: 0,
-})
-
-// --- Cache Persistence ---
-
-const loadCache = (): LocalCache => {
-  if (cache) return cache
-
-  cachePath = getLocalCachePath()
-
-  // Ensure directory exists
-  const cacheDir = path.dirname(cachePath)
-  if (!fs.existsSync(cacheDir)) {
-    fs.mkdirSync(cacheDir, { recursive: true })
-  }
-
-  // Migrate from old store if it exists
-  migrateFromOldStore()
-
-  try {
-    cache = fs.existsSync(cachePath)
-      ? { ...getDefaultCache(), ...JSON.parse(fs.readFileSync(cachePath, 'utf-8')) }
-      : getDefaultCache()
-  } catch (err) {
-    console.error('Failed to load cache, using defaults:', err)
-    cache = getDefaultCache()
-  }
-
-  // Run category migration
-  runCategoryMigration()
-
-  return cache!
-}
-
-const saveCache = () => {
-  if (cache && cachePath) {
-    try {
-      fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2))
-    } catch (err) {
-      console.error('Failed to save cache:', err)
-    }
-  }
-}
-
-const ensureCache = () => {
-  if (!cache) loadCache()
-  return cache!
-}
-
-const updateTasksCache = (fn: (tasks: Task[]) => Task[]) => {
-  ensureCache().tasks = fn(ensureCache().tasks)
-  saveCache()
-}
-
-const updateNotesCache = (fn: (notes: Note[]) => Note[]) => {
-  ensureCache().notes = fn(ensureCache().notes)
-  saveCache()
-}
-
-// --- Migration from Old Store ---
-
-const migrateFromOldStore = () => {
-  if (!cachePath) return
-
-  const userDataDir = app.getPath('userData')
-  const oldStorePath = path.join(userDataDir, 'toodoo-store.json')
-
-  // If cache already exists, no need to migrate
-  if (fs.existsSync(cachePath)) return
-
-  // Check for old local store
-  if (fs.existsSync(oldStorePath)) {
-    try {
-      const oldData = JSON.parse(fs.readFileSync(oldStorePath, 'utf-8'))
-      if (oldData.cache) {
-        cache = {
-          tasks: oldData.cache.tasks || [],
-          notes: oldData.cache.notes || [],
-          pendingChanges: [],
-          lastNasSyncAt: 0,
-        }
-        saveCache()
-        // Rename old file to backup
-        fs.renameSync(oldStorePath, `${oldStorePath}.migrated-${Date.now()}`)
-        console.log('Migrated data from old store to new cache format')
-      }
-    } catch (err) {
-      console.error('Failed to migrate old store:', err)
-    }
-  }
-}
-
-// --- Category Migration ---
-
-const runCategoryMigration = () => {
-  if (!cache) return
-
-  const categoryMap: Record<string, TaskCategory> = {
-    'short_term': 'hot',
-    'long_term': 'warm',
-    'immediate': 'scorching',
-  }
-
-  let migrated = false
-  cache.tasks = cache.tasks.map(task => {
-    const oldCategory = task.category as string
-    if (oldCategory in categoryMap) {
-      migrated = true
-      return { ...task, category: categoryMap[oldCategory] }
-    }
-    return task
-  })
-
-  if (migrated) {
-    console.log('Migrated task categories from old naming to new naming')
-    saveCache()
-  }
-}
-
-// --- Pending Changes Tracking ---
-
-const addPendingChange = (table: 'tasks' | 'project_notes' | 'notes', recordId: string, operation: 'create' | 'update' | 'delete') => {
-  const c = ensureCache()
-
-  // Remove any existing pending change for this record
-  c.pendingChanges = c.pendingChanges.filter(p => !(p.table === table && p.recordId === recordId))
-
-  // Add new pending change
-  c.pendingChanges.push({
-    id: crypto.randomUUID(),
-    table,
-    recordId,
-    operation,
-    timestamp: Date.now(),
-  })
-
-  saveCache()
-}
-
-const clearPendingChanges = () => {
-  ensureCache().pendingChanges = []
-  saveCache()
-}
-
-// --- NAS Operations ---
-
-type NasStore = {
-  tasks: Task[]
-  notes: Note[]
-  lastModifiedAt: number
-  lastModifiedBy: string
-}
-
-const getDefaultNasStore = (): NasStore => ({
-  tasks: [],
-  notes: [],
-  lastModifiedAt: 0,
-  lastModifiedBy: '',
-})
-
-const readFromNas = async (): Promise<NasStore | null> => {
-  const nasStorePath = getNasStorePath()
-  if (!nasStorePath) return null
-
-  try {
-    if (!fs.existsSync(nasStorePath)) {
-      return getDefaultNasStore()
-    }
-    const content = fs.readFileSync(nasStorePath, 'utf-8')
-    return JSON.parse(content) as NasStore
-  } catch (err) {
-    console.error('Failed to read from NAS:', err)
-    return null
-  }
-}
-
-const writeToNas = async (store: NasStore): Promise<boolean> => {
-  const nasStorePath = getNasStorePath()
-  if (!nasStorePath) return false
-
-  try {
-    // Ensure NAS directory exists
-    const nasDir = path.dirname(nasStorePath)
-    if (!fs.existsSync(nasDir)) {
-      fs.mkdirSync(nasDir, { recursive: true })
-    }
-
-    // Write atomically using temp file
-    const tempPath = `${nasStorePath}.${getMachineId()}.tmp`
-    fs.writeFileSync(tempPath, JSON.stringify(store, null, 2))
-    fs.renameSync(tempPath, nasStorePath)
-    return true
-  } catch (err) {
-    console.error('Failed to write to NAS:', err)
-    return false
-  }
-}
-
-// --- Sync Logic ---
-
-let isNasOnline = false
-let syncInProgress = false
-let syncInterval: ReturnType<typeof setInterval> | null = null
-let syncDebounceTimeout: ReturnType<typeof setTimeout> | null = null
-let pollInterval: ReturnType<typeof setInterval> | null = null
-let syncErrorCount = 0
-let currentBackoffMs = MIN_BACKOFF_MS
-let circuitBreakerOpen = false
-let circuitBreakerResetTime = 0
-
-const mergeData = (local: LocalCache, nas: NasStore): { tasks: Task[]; notes: Note[] } => {
-  // Create maps for efficient lookup
-  const nasTaskMap = new Map(nas.tasks.map(t => [t.id, t]))
-  const nasNoteMap = new Map(nas.notes.map(n => [n.id, n]))
-  const localTaskMap = new Map(local.tasks.map(t => [t.id, t]))
-  const localNoteMap = new Map(local.notes.map(n => [n.id, n]))
-
-  // Get IDs of records with pending changes
-  const pendingTaskIds = new Set(
-    local.pendingChanges.filter(p => p.table === 'tasks').map(p => p.recordId)
-  )
-  const pendingNoteIds = new Set(
-    local.pendingChanges.filter(p => p.table === 'notes').map(p => p.recordId)
-  )
-
-  // Merge tasks: LWW with pending changes preserved
-  const mergedTasks: Task[] = []
-  const allTaskIds = new Set([...nasTaskMap.keys(), ...localTaskMap.keys()])
-
-  for (const id of allTaskIds) {
-    const nasTask = nasTaskMap.get(id)
-    const localTask = localTaskMap.get(id)
-
-    if (pendingTaskIds.has(id)) {
-      // Local has pending changes - keep local version
-      if (localTask) {
-        mergedTasks.push(localTask)
-      }
-      // If local deleted, don't include
-    } else if (nasTask && localTask) {
-      // Both exist, no pending change - use newer one (LWW)
-      mergedTasks.push(nasTask.updatedAt >= localTask.updatedAt ? nasTask : localTask)
-    } else if (nasTask) {
-      mergedTasks.push(nasTask)
-    } else if (localTask) {
-      mergedTasks.push(localTask)
-    }
-  }
-
-  // Merge notes: same logic
-  const mergedNotes: Note[] = []
-  const allNoteIds = new Set([...nasNoteMap.keys(), ...localNoteMap.keys()])
-
-  for (const id of allNoteIds) {
-    const nasNote = nasNoteMap.get(id)
-    const localNote = localNoteMap.get(id)
-
-    if (pendingNoteIds.has(id)) {
-      if (localNote) {
-        mergedNotes.push(localNote)
-      }
-    } else if (nasNote && localNote) {
-      mergedNotes.push(nasNote.updatedAt >= localNote.updatedAt ? nasNote : localNote)
-    } else if (nasNote) {
-      mergedNotes.push(nasNote)
-    } else if (localNote) {
-      mergedNotes.push(localNote)
-    }
-  }
-
-  return { tasks: mergedTasks, notes: mergedNotes }
-}
-
-const syncWithNas = async (): Promise<boolean> => {
-  const nasPath = getNasPath()
-  if (!nasPath) {
-    isNasOnline = false
-    return false
-  }
-
-  const machineId = getMachineId()
-
-  // No file locking - single user across machines, LWW merge handles conflicts
-  // Atomic writes (temp file + rename) prevent corruption
-  try {
-    // Read current NAS data
-    const nasData = await readFromNas()
-    if (nasData === null) {
-      isNasOnline = false
-      return false
-    }
-
-    isNasOnline = true
-    const localCache = ensureCache()
-
-    // If we have pending changes, merge and write back
-    if (localCache.pendingChanges.length > 0) {
-      const pendingCount = localCache.pendingChanges.length
-      const merged = mergeData(localCache, nasData)
-
-      // Update NAS with merged data
-      const newNasStore: NasStore = {
-        tasks: merged.tasks,
-        notes: merged.notes,
-        lastModifiedAt: Date.now(),
-        lastModifiedBy: machineId,
-      }
-
-      const writeSuccess = await writeToNas(newNasStore)
-      if (writeSuccess) {
-        // Update local cache with merged data
-        localCache.tasks = merged.tasks
-        localCache.notes = merged.notes
-        localCache.lastNasSyncAt = Date.now()
-        clearPendingChanges()
-        saveCache()
-        setLastSyncAt(Date.now())
-        console.log(`Synced ${pendingCount} pending change(s) to NAS`)
-      }
-
-      return writeSuccess
-    } else {
-      // No pending changes - silently update local cache from NAS
-      localCache.tasks = nasData.tasks
-      localCache.notes = nasData.notes
-      localCache.lastNasSyncAt = Date.now()
-      saveCache()
-      setLastSyncAt(Date.now())
-      return true
-    }
-  } catch (err) {
-    console.error('Sync error:', err)
-    return false
-  }
-}
-
-// --- Sync Scheduler ---
-
-// Circuit breaker helpers
-const onSyncSuccess = () => {
-  syncErrorCount = 0
-  currentBackoffMs = MIN_BACKOFF_MS
-  circuitBreakerOpen = false
-}
-
-const onSyncFailure = (err?: unknown) => {
-  syncErrorCount++
-  if (err) console.error('Sync failed:', err)
-
-  if (syncErrorCount >= MAX_CONSECUTIVE_ERRORS && !circuitBreakerOpen) {
-    circuitBreakerOpen = true
-    circuitBreakerResetTime = Date.now() + currentBackoffMs
-    console.warn(`Circuit breaker opened: NAS sync failed ${syncErrorCount} times. Backing off for ${currentBackoffMs / 1000}s`)
-
-    // Exponential backoff: double the wait time for next failure
-    currentBackoffMs = Math.min(currentBackoffMs * 2, MAX_BACKOFF_MS)
-  }
-}
-
-const isCircuitBreakerAllowing = (): boolean => {
-  if (!circuitBreakerOpen) return true
-
-  // Check if backoff period has passed
-  if (Date.now() >= circuitBreakerResetTime) {
-    // Half-open state: allow one attempt
-    console.log('Circuit breaker half-open: attempting sync...')
-    return true
-  }
-
-  return false
-}
-
-export const getSyncStatus = () => ({
-  isOnline: isNasOnline,
-  pendingCount: ensureCache().pendingChanges.length,
-  lastSyncAt: getLastSyncAt(),
-  circuitBreakerOpen,
-  nextRetryAt: circuitBreakerOpen ? circuitBreakerResetTime : null,
-})
-
-export const startSyncScheduler = () => {
-  if (syncInterval) return
-  syncInterval = setInterval(() => {
-    // Only sync if we have pending changes to upload
-    const hasPending = ensureCache().pendingChanges.length > 0
-    if (hasPending && !syncInProgress && isCircuitBreakerAllowing()) {
-      syncInProgress = true
-      syncWithNas()
-        .then(success => success ? onSyncSuccess() : onSyncFailure())
-        .catch(err => onSyncFailure(err))
-        .finally(() => { syncInProgress = false })
-    }
-  }, SYNC_INTERVAL_MS)
-  // Initial sync to upload any pending changes from last session
-  if (ensureCache().pendingChanges.length > 0) {
-    syncInProgress = true
-    syncWithNas()
-      .then(success => success ? onSyncSuccess() : onSyncFailure())
-      .catch(err => onSyncFailure(err))
-      .finally(() => { syncInProgress = false })
-  }
-}
-
-export const stopSyncScheduler = () => {
-  if (syncInterval) {
-    clearInterval(syncInterval)
-    syncInterval = null
-  }
-  stopPollScheduler()
-}
-
-// --- Poll for Remote Changes ---
-// Separate from sync - only downloads, never overwrites local pending changes
-
-const pollNasForUpdates = async (): Promise<boolean> => {
-  const nasPath = getNasPath()
-  if (!nasPath) return false
-
-  const localCache = ensureCache()
-
-  // Don't overwrite if we have pending local changes
-  if (localCache.pendingChanges.length > 0) return false
-
-  try {
-    const nasData = await readFromNas()
-    if (!nasData) {
-      isNasOnline = false
-      return false
-    }
-
-    isNasOnline = true
-
-    // Only update if NAS is newer than our last sync
-    if (nasData.lastModifiedAt > localCache.lastNasSyncAt) {
-      console.log('Polling: NAS has newer data, updating local cache')
-      localCache.tasks = nasData.tasks
-      localCache.notes = nasData.notes
-      localCache.lastNasSyncAt = Date.now()
-      saveCache()
+// --- In-Memory Cache ---
+// Firestore listeners populate these caches; CRUD operations update both cache and Firestore
+
+let tasksCache: Task[] = []
+let notesCache: Note[] = []
+
+// --- Firestore Listeners ---
+
+let tasksUnsubscribe: Unsubscribe | null = null
+let notesUnsubscribe: Unsubscribe | null = null
+
+/**
+ * Start real-time listeners for tasks and notes collections.
+ * Updates are broadcast to all renderer windows.
+ */
+const startListeners = () => {
+  // Tasks listener
+  tasksUnsubscribe = onSnapshot(
+    getTasksCollection(),
+    (snapshot) => {
+      tasksCache = snapshot.docs.map((doc) => doc.data() as Task)
+      console.log(`Firestore tasks updated: ${tasksCache.length} tasks`)
       broadcastTaskChange()
+    },
+    (error) => {
+      console.error('Firestore tasks listener error:', error)
+    }
+  )
+
+  // Notes listener
+  notesUnsubscribe = onSnapshot(
+    getNotesCollection(),
+    (snapshot) => {
+      notesCache = snapshot.docs.map((doc) => doc.data() as Note)
+      console.log(`Firestore notes updated: ${notesCache.length} notes`)
       broadcastNotesChange()
+    },
+    (error) => {
+      console.error('Firestore notes listener error:', error)
     }
+  )
+}
 
-    return true
-  } catch (err) {
-    console.error('Poll error:', err)
-    return false
+/**
+ * Stop all Firestore listeners. Called on app shutdown.
+ */
+export const stopListeners = () => {
+  if (tasksUnsubscribe) {
+    tasksUnsubscribe()
+    tasksUnsubscribe = null
+  }
+  if (notesUnsubscribe) {
+    notesUnsubscribe()
+    notesUnsubscribe = null
   }
 }
 
-const startPollScheduler = () => {
-  if (pollInterval) return
-  pollInterval = setInterval(() => {
-    pollNasForUpdates()
-  }, POLL_INTERVAL_MS)
-  // Initial poll to get latest from NAS
-  pollNasForUpdates()
-}
+// --- Database Initialization ---
 
-const stopPollScheduler = () => {
-  if (pollInterval) {
-    clearInterval(pollInterval)
-    pollInterval = null
-  }
-}
+/**
+ * Initialize the database: connect to Firebase, load initial data, start listeners.
+ */
+export const initDatabase = async (): Promise<void> => {
+  await initFirebase()
 
-// Debounced sync trigger - coalesces rapid changes
-const debouncedSync = () => {
-  if (syncDebounceTimeout) {
-    clearTimeout(syncDebounceTimeout)
-  }
-  syncDebounceTimeout = setTimeout(() => {
-    syncDebounceTimeout = null
-    if (!syncInProgress && isCircuitBreakerAllowing()) {
-      syncInProgress = true
-      syncWithNas()
-        .then(success => success ? onSyncSuccess() : onSyncFailure())
-        .catch(err => onSyncFailure(err))
-        .finally(() => { syncInProgress = false })
-    }
-  }, SYNC_DEBOUNCE_MS)
-}
+  // Load initial data
+  const [tasksSnapshot, notesSnapshot] = await Promise.all([
+    getDocs(getTasksCollection()),
+    getDocs(getNotesCollection()),
+  ])
 
-export const triggerSync = async () => {
-  if (syncInProgress) return
-  if (!isCircuitBreakerAllowing()) {
-    console.log('Sync blocked by circuit breaker, will retry at', new Date(circuitBreakerResetTime).toISOString())
-    return
-  }
+  tasksCache = tasksSnapshot.docs.map((doc) => doc.data() as Task)
+  notesCache = notesSnapshot.docs.map((doc) => doc.data() as Note)
 
-  syncInProgress = true
-  try {
-    const success = await syncWithNas()
-    success ? onSyncSuccess() : onSyncFailure()
-  } catch (err) {
-    onSyncFailure(err)
-  } finally {
-    syncInProgress = false
-  }
-}
+  console.log(`Database initialized: ${tasksCache.length} tasks, ${notesCache.length} notes`)
 
-// Force reset circuit breaker (e.g., when user manually retries)
-export const resetCircuitBreaker = () => {
-  circuitBreakerOpen = false
-  syncErrorCount = 0
-  currentBackoffMs = MIN_BACKOFF_MS
-  console.log('Circuit breaker manually reset')
-}
-
-export const initDatabase = () => {
-  loadCache()
-  // Only start sync/poll if NAS is configured
-  if (getNasPath()) {
-    startSyncScheduler()
-    startPollScheduler()
-  }
+  // Start real-time listeners
+  startListeners()
 }
 
 // --- Validation ---
 
-const validate = (rules: [boolean, string][]): string | null => rules.find(([fail]) => fail)?.[1] ?? null
+const validate = (rules: [boolean, string][]): string | null =>
+  rules.find(([fail]) => fail)?.[1] ?? null
 
-const validateTask = (p: { title?: string; description?: string | null; category?: TaskCategory }): string | null => validate([
-  [p.title !== undefined && typeof p.title !== 'string', 'Title must be a string'],
-  [typeof p.title === 'string' && !p.title.trim(), 'Title cannot be empty'],
-  [typeof p.title === 'string' && p.title.length > 500, 'Title too long'],
-  [p.description != null && typeof p.description !== 'string', 'Description must be a string'],
-  [typeof p.description === 'string' && p.description.length > 5000, 'Description too long'],
-  [p.category !== undefined && !ALL_CATEGORIES.includes(p.category), 'Invalid category'],
-  [JSON.stringify(p).length > MAX_PAYLOAD_SIZE, 'Payload too large'],
-])
+const validateTask = (p: {
+  title?: string
+  description?: string | null
+  category?: TaskCategory
+}): string | null =>
+  validate([
+    [p.title !== undefined && typeof p.title !== 'string', 'Title must be a string'],
+    [typeof p.title === 'string' && !p.title.trim(), 'Title cannot be empty'],
+    [typeof p.title === 'string' && p.title.length > 500, 'Title too long'],
+    [p.description != null && typeof p.description !== 'string', 'Description must be a string'],
+    [typeof p.description === 'string' && p.description.length > 5000, 'Description too long'],
+    [p.category !== undefined && !ALL_CATEGORIES.includes(p.category), 'Invalid category'],
+    [JSON.stringify(p).length > MAX_PAYLOAD_SIZE, 'Payload too large'],
+  ])
 
-const validateProjectNote = (p: { content: string }): string | null => validate([
-  [typeof p.content !== 'string', 'Content must be a string'],
-  [!p.content.trim(), 'Content cannot be empty'],
-  [p.content.length > 10000, 'Content too long'],
-])
+const validateProjectNote = (p: { content: string }): string | null =>
+  validate([
+    [typeof p.content !== 'string', 'Content must be a string'],
+    [!p.content.trim(), 'Content cannot be empty'],
+    [p.content.length > 10000, 'Content too long'],
+  ])
 
-const validateNotetankNote = (p: { title?: string; content?: string }): string | null => validate([
-  [p.title !== undefined && typeof p.title !== 'string', 'Title must be a string'],
-  [typeof p.title === 'string' && !p.title.trim(), 'Title cannot be empty'],
-  [typeof p.title === 'string' && p.title.length > 200, 'Title too long'],
-  [p.content !== undefined && typeof p.content !== 'string', 'Content must be a string'],
-  [typeof p.content === 'string' && p.content.length > 50000, 'Content too long'],
-])
+const validateNotetankNote = (p: { title?: string; content?: string }): string | null =>
+  validate([
+    [p.title !== undefined && typeof p.title !== 'string', 'Title must be a string'],
+    [typeof p.title === 'string' && !p.title.trim(), 'Title cannot be empty'],
+    [typeof p.title === 'string' && p.title.length > 200, 'Title too long'],
+    [p.content !== undefined && typeof p.content !== 'string', 'Content must be a string'],
+    [typeof p.content === 'string' && p.content.length > 50000, 'Content too long'],
+  ])
 
 // --- Tasks ---
 
 export const getTasks = async (): Promise<Task[]> => {
-  // Trigger a background sync but return cached data immediately
-  if (!syncInProgress && getNasPath()) {
-    syncInProgress = true
-    syncWithNas()
-      .catch(() => {})
-      .finally(() => { syncInProgress = false })
-  }
-  return ensureCache().tasks
+  return tasksCache
 }
 
-export const addTask = (p: {
+export const addTask = async (p: {
   id: string
   title: string
   description?: string
@@ -618,7 +146,7 @@ export const addTask = (p: {
   isDone?: boolean
   scheduledDate?: number
   scheduledTime?: string
-}): Task | { error: string } => {
+}): Promise<Task | { error: string }> => {
   const err = validateTask(p)
   if (err) return { error: err }
 
@@ -649,22 +177,27 @@ export const addTask = (p: {
     sortOrder: 0,
   }
 
-  updateTasksCache(tasks => {
-    // Shift sortOrder for tasks in same category
-    const shifted = tasks.map(t =>
-      t.category === task.category ? { ...t, sortOrder: (t.sortOrder ?? 0) + 1 } : t
-    )
-    return [task, ...shifted.filter(t => t.id !== task.id)]
-  })
-  addPendingChange('tasks', task.id, 'create')
+  // Update cache immediately for responsiveness
+  tasksCache = [
+    task,
+    ...tasksCache
+      .filter((t) => t.id !== task.id)
+      .map((t) => (t.category === task.category ? { ...t, sortOrder: (t.sortOrder ?? 0) + 1 } : t)),
+  ]
 
-  // Trigger background sync
-  debouncedSync()
+  // Persist to Firestore (also updates shifted tasks)
+  const tasksCollection = getTasksCollection()
+  await setDoc(doc(tasksCollection, task.id), task)
+
+  // Update shifted tasks in Firestore
+  for (const t of tasksCache.filter((t) => t.category === task.category && t.id !== task.id)) {
+    await setDoc(doc(tasksCollection, t.id), t)
+  }
 
   return task
 }
 
-export const updateTask = (p: {
+export const updateTask = async (p: {
   id: string
   title?: string
   description?: string | null
@@ -673,18 +206,20 @@ export const updateTask = (p: {
   scheduledDate?: number | null
   scheduledTime?: string | null
   userPromoted?: boolean
-}): Task | null | { error: string } => {
+}): Promise<Task | null | { error: string }> => {
   const err = validateTask(p)
   if (err) return { error: err }
 
-  const existing = ensureCache().tasks.find(t => t.id === p.id)
+  const existing = tasksCache.find((t) => t.id === p.id)
   if (!existing) return null
 
   const now = Date.now()
 
   // Handle scheduling field updates
-  const newScheduledDate = p.scheduledDate === null ? undefined : (p.scheduledDate ?? existing.scheduledDate)
-  const newScheduledTime = p.scheduledTime === null ? undefined : (p.scheduledTime ?? existing.scheduledTime)
+  const newScheduledDate =
+    p.scheduledDate === null ? undefined : (p.scheduledDate ?? existing.scheduledDate)
+  const newScheduledTime =
+    p.scheduledTime === null ? undefined : (p.scheduledTime ?? existing.scheduledTime)
 
   // Determine base category
   let newBaseCategory = existing.baseCategory
@@ -721,7 +256,8 @@ export const updateTask = (p: {
   const updated: Task = {
     ...existing,
     title: p.title !== undefined ? p.title.trim() : existing.title,
-    description: p.description === null ? undefined : (p.description?.trim() ?? existing.description),
+    description:
+      p.description === null ? undefined : (p.description?.trim() ?? existing.description),
     category: effectiveCategory,
     baseCategory: newBaseCategory,
     scheduledDate: newScheduledDate,
@@ -732,36 +268,43 @@ export const updateTask = (p: {
     sortOrder: categoryChanged ? 0 : (existing.sortOrder ?? 0), // Move to top if category changed
   }
 
-  updateTasksCache(tasks => {
-    if (categoryChanged) {
-      // Shift tasks in new category down
-      return tasks.map(t => {
-        if (t.id === p.id) return updated
-        if (t.category === p.category) return { ...t, sortOrder: (t.sortOrder ?? 0) + 1 }
-        return t
-      })
-    }
-    return tasks.map(t => t.id === p.id ? updated : t)
-  })
-  addPendingChange('tasks', p.id, 'update')
+  // Update cache
+  if (categoryChanged) {
+    tasksCache = tasksCache.map((t) => {
+      if (t.id === p.id) return updated
+      if (t.category === effectiveCategory) return { ...t, sortOrder: (t.sortOrder ?? 0) + 1 }
+      return t
+    })
+  } else {
+    tasksCache = tasksCache.map((t) => (t.id === p.id ? updated : t))
+  }
 
-  // Trigger background sync
-  debouncedSync()
+  // Persist to Firestore
+  const tasksCollection = getTasksCollection()
+  await setDoc(doc(tasksCollection, updated.id), updated)
+
+  // Update shifted tasks if category changed
+  if (categoryChanged) {
+    for (const t of tasksCache.filter(
+      (t) => t.category === effectiveCategory && t.id !== updated.id
+    )) {
+      await setDoc(doc(tasksCollection, t.id), t)
+    }
+  }
 
   return updated
 }
 
-export const reorderTask = (taskId: string, targetIndex: number): boolean => {
-  const cache = ensureCache()
-  const task = cache.tasks.find(t => t.id === taskId)
+export const reorderTask = async (taskId: string, targetIndex: number): Promise<boolean> => {
+  const task = tasksCache.find((t) => t.id === taskId)
   if (!task) return false
 
   // Get tasks in the same category, sorted by sortOrder
-  const categoryTasks = cache.tasks
-    .filter(t => t.category === task.category && !t.isDeleted)
+  const categoryTasks = tasksCache
+    .filter((t) => t.category === task.category && !t.isDeleted)
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
 
-  const currentIndex = categoryTasks.findIndex(t => t.id === taskId)
+  const currentIndex = categoryTasks.findIndex((t) => t.id === taskId)
   if (currentIndex === -1 || currentIndex === targetIndex) return false
 
   // Remove task from current position and insert at target
@@ -769,44 +312,50 @@ export const reorderTask = (taskId: string, targetIndex: number): boolean => {
   categoryTasks.splice(targetIndex, 0, task)
 
   // Update sortOrder for all tasks in category
-  const updatedIds = new Set<string>()
+  const now = Date.now()
+  const updatedTasks: Task[] = []
+
   categoryTasks.forEach((t, idx) => {
     if (t.sortOrder !== idx) {
-      updatedIds.add(t.id)
+      const updated = { ...t, sortOrder: idx, updatedAt: now }
+      updatedTasks.push(updated)
     }
   })
 
-  updateTasksCache(tasks => tasks.map(t => {
+  // Update cache
+  tasksCache = tasksCache.map((t) => {
     if (t.category !== task.category) return t
-    const idx = categoryTasks.findIndex(ct => ct.id === t.id)
+    const idx = categoryTasks.findIndex((ct) => ct.id === t.id)
     if (idx === -1) return t
-    return { ...t, sortOrder: idx, updatedAt: Date.now() }
-  }))
+    return { ...t, sortOrder: idx, updatedAt: now }
+  })
 
-  // Add pending changes for all reordered tasks
-  for (const id of updatedIds) {
-    addPendingChange('tasks', id, 'update')
+  // Persist to Firestore
+  const tasksCollection = getTasksCollection()
+  for (const t of updatedTasks) {
+    await setDoc(doc(tasksCollection, t.id), t)
   }
-  addPendingChange('tasks', taskId, 'update')
 
-  debouncedSync()
   return true
 }
 
-export const deleteTask = (id: string) => {
-  updateTasksCache(tasks => tasks.filter(t => t.id !== id))
-  addPendingChange('tasks', id, 'delete')
-
-  // Trigger background sync
-  debouncedSync()
+export const deleteTask = async (id: string): Promise<void> => {
+  tasksCache = tasksCache.filter((t) => t.id !== id)
+  await deleteDoc(doc(getTasksCollection(), id))
 }
 
 // --- Project Notes ---
 
-export const addProjectNote = (p: { id: string; taskId: string; content: string }): ProjectNote | { error: string } => {
+export const addProjectNote = async (p: {
+  id: string
+  taskId: string
+  content: string
+}): Promise<ProjectNote | { error: string }> => {
   const err = validateProjectNote(p)
   if (err) return { error: err }
-  if (!ensureCache().tasks.find(t => t.id === p.taskId)) return { error: 'Task not found' }
+
+  const task = tasksCache.find((t) => t.id === p.taskId)
+  if (!task) return { error: 'Task not found' }
 
   const now = Date.now()
   const note: ProjectNote = {
@@ -818,72 +367,101 @@ export const addProjectNote = (p: { id: string; taskId: string; content: string 
     isDeleted: false,
   }
 
-  updateTasksCache(tasks => tasks.map(t =>
-    t.id === p.taskId ? { ...t, projectNotes: [...(t.projectNotes || []), note] } : t
-  ))
-  addPendingChange('project_notes', note.id, 'create')
+  // Update task with new note
+  const updatedTask: Task = {
+    ...task,
+    projectNotes: [...(task.projectNotes || []), note],
+    updatedAt: now,
+  }
 
-  // Trigger background sync
-  debouncedSync()
+  // Update cache
+  tasksCache = tasksCache.map((t) => (t.id === p.taskId ? updatedTask : t))
+
+  // Persist to Firestore
+  await setDoc(doc(getTasksCollection(), p.taskId), updatedTask)
 
   return note
 }
 
-export const updateProjectNote = (p: { id: string; content: string }): ProjectNote | null | { error: string } => {
+export const updateProjectNote = async (p: {
+  id: string
+  content: string
+}): Promise<ProjectNote | null | { error: string }> => {
   const err = validateProjectNote(p)
   if (err) return { error: err }
 
   let foundNote: ProjectNote | null = null
   let taskId: string | null = null
-  for (const task of ensureCache().tasks) {
-    const note = task.projectNotes?.find(n => n.id === p.id)
-    if (note) { foundNote = note; taskId = task.id; break }
+  for (const task of tasksCache) {
+    const note = task.projectNotes?.find((n) => n.id === p.id)
+    if (note) {
+      foundNote = note
+      taskId = task.id
+      break
+    }
   }
   if (!foundNote || !taskId) return null
 
+  const now = Date.now()
   const updated: ProjectNote = {
     ...foundNote,
     content: p.content.trim(),
-    updatedAt: Date.now(),
+    updatedAt: now,
   }
 
-  updateTasksCache(tasks => tasks.map(t =>
-    t.id === taskId
-      ? { ...t, projectNotes: (t.projectNotes ?? []).map(n => n.id === p.id ? updated : n) }
-      : t
-  ))
-  addPendingChange('project_notes', p.id, 'update')
+  // Update task
+  const task = tasksCache.find((t) => t.id === taskId)!
+  const updatedTask: Task = {
+    ...task,
+    projectNotes: (task.projectNotes ?? []).map((n) => (n.id === p.id ? updated : n)),
+    updatedAt: now,
+  }
 
-  // Trigger background sync
-  debouncedSync()
+  // Update cache
+  tasksCache = tasksCache.map((t) => (t.id === taskId ? updatedTask : t))
+
+  // Persist to Firestore
+  await setDoc(doc(getTasksCollection(), taskId), updatedTask)
 
   return updated
 }
 
-export const deleteProjectNote = (id: string) => {
-  updateTasksCache(tasks => tasks.map(t =>
-    t.projectNotes ? { ...t, projectNotes: t.projectNotes.filter(n => n.id !== id) } : t
-  ))
-  addPendingChange('project_notes', id, 'delete')
+export const deleteProjectNote = async (id: string): Promise<void> => {
+  let taskId: string | null = null
+  for (const task of tasksCache) {
+    if (task.projectNotes?.find((n) => n.id === id)) {
+      taskId = task.id
+      break
+    }
+  }
+  if (!taskId) return
 
-  // Trigger background sync
-  debouncedSync()
+  const task = tasksCache.find((t) => t.id === taskId)!
+  const now = Date.now()
+  const updatedTask: Task = {
+    ...task,
+    projectNotes: task.projectNotes?.filter((n) => n.id !== id),
+    updatedAt: now,
+  }
+
+  // Update cache
+  tasksCache = tasksCache.map((t) => (t.id === taskId ? updatedTask : t))
+
+  // Persist to Firestore
+  await setDoc(doc(getTasksCollection(), taskId), updatedTask)
 }
 
 // --- Notetank Notes ---
 
 export const getNotes = async (): Promise<Note[]> => {
-  // Trigger a background sync but return cached data immediately
-  if (!syncInProgress && getNasPath()) {
-    syncInProgress = true
-    syncWithNas()
-      .catch(() => {})
-      .finally(() => { syncInProgress = false })
-  }
-  return ensureCache().notes
+  return notesCache
 }
 
-export const addNote = (p: { id: string; title: string; content: string }): Note | { error: string } => {
+export const addNote = async (p: {
+  id: string
+  title: string
+  content: string
+}): Promise<Note | { error: string }> => {
   const err = validateNotetankNote(p)
   if (err) return { error: err }
 
@@ -897,20 +475,24 @@ export const addNote = (p: { id: string; title: string; content: string }): Note
     isDeleted: false,
   }
 
-  updateNotesCache(notes => [note, ...notes.filter(n => n.id !== note.id)])
-  addPendingChange('notes', note.id, 'create')
+  // Update cache
+  notesCache = [note, ...notesCache.filter((n) => n.id !== note.id)]
 
-  // Trigger background sync
-  debouncedSync()
+  // Persist to Firestore
+  await setDoc(doc(getNotesCollection(), note.id), note)
 
   return note
 }
 
-export const updateNote = (p: { id: string; title?: string; content?: string }): Note | null | { error: string } => {
+export const updateNote = async (p: {
+  id: string
+  title?: string
+  content?: string
+}): Promise<Note | null | { error: string }> => {
   const err = validateNotetankNote(p)
   if (err) return { error: err }
 
-  const existing = ensureCache().notes.find(n => n.id === p.id)
+  const existing = notesCache.find((n) => n.id === p.id)
   if (!existing) return null
 
   const updated: Note = {
@@ -920,32 +502,18 @@ export const updateNote = (p: { id: string; title?: string; content?: string }):
     updatedAt: Date.now(),
   }
 
-  updateNotesCache(notes => notes.map(n => n.id === p.id ? updated : n))
-  addPendingChange('notes', p.id, 'update')
+  // Update cache
+  notesCache = notesCache.map((n) => (n.id === p.id ? updated : n))
 
-  // Trigger background sync
-  debouncedSync()
+  // Persist to Firestore
+  await setDoc(doc(getNotesCollection(), p.id), updated)
 
   return updated
 }
 
-export const deleteNote = (id: string) => {
-  updateNotesCache(notes => notes.filter(n => n.id !== id))
-  addPendingChange('notes', id, 'delete')
-
-  // Trigger background sync
-  debouncedSync()
-}
-
-// --- Re-initialize after setup ---
-
-export const reinitializeWithNas = () => {
-  // Reload cache and start sync/poll
-  loadCache()
-  if (getNasPath()) {
-    startSyncScheduler()
-    startPollScheduler()
-  }
+export const deleteNote = async (id: string): Promise<void> => {
+  notesCache = notesCache.filter((n) => n.id !== id)
+  await deleteDoc(doc(getNotesCollection(), id))
 }
 
 // --- Scheduled Task Category Recalculation ---
@@ -954,66 +522,64 @@ export const reinitializeWithNas = () => {
  * Recalculate categories for all scheduled tasks based on current time.
  * Returns the number of tasks that were updated.
  */
-export const recalculateScheduledCategories = (): number => {
-  const c = ensureCache()
+export const recalculateScheduledCategories = async (): Promise<number> => {
   const now = Date.now()
 
   // Find tasks that need category updates
-  const tasksNeedingUpdate = getTasksNeedingUpdate(c.tasks, now)
+  const tasksNeedingUpdate = getTasksNeedingUpdate(tasksCache, now)
 
   if (tasksNeedingUpdate.length === 0) return 0
 
   const updatedIds = new Set<string>()
+  const updatedTasks: Task[] = []
 
-  updateTasksCache(tasks => tasks.map(task => {
-    // Skip if not in our update list
-    if (!tasksNeedingUpdate.find(t => t.id === task.id)) return task
-
-    const newCategory = calculateEffectiveCategory(
-      task.scheduledDate!,
-      task.scheduledTime,
-      now
-    )
+  for (const task of tasksNeedingUpdate) {
+    const newCategory = calculateEffectiveCategory(task.scheduledDate!, task.scheduledTime, now)
 
     // Check if category actually changed (handles edge cases)
-    if (newCategory === task.category) return task
+    if (newCategory === task.category) continue
 
     updatedIds.add(task.id)
 
-    // Move to top of new category
-    return {
+    const updated: Task = {
       ...task,
       category: newCategory,
       updatedAt: now,
-      sortOrder: 0,
+      sortOrder: 0, // Move to top of new category
     }
-  }))
+    updatedTasks.push(updated)
+  }
 
-  // Shift sortOrder for tasks in affected categories
-  if (updatedIds.size > 0) {
-    updateTasksCache(tasks => {
-      // Group tasks by category
-      const byCategory = new Map<TaskCategory, Task[]>()
-      for (const task of tasks) {
-        if (!byCategory.has(task.category)) byCategory.set(task.category, [])
-        byCategory.get(task.category)!.push(task)
-      }
+  if (updatedIds.size === 0) return 0
 
-      // Sort each category and reassign sortOrder
-      return tasks.map(task => {
-        const categoryTasks = byCategory.get(task.category) ?? []
-        const sorted = [...categoryTasks].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-        const newSortOrder = sorted.findIndex(t => t.id === task.id)
-        return { ...task, sortOrder: newSortOrder >= 0 ? newSortOrder : task.sortOrder }
-      })
-    })
+  // Update cache
+  tasksCache = tasksCache.map((task) => {
+    const updated = updatedTasks.find((t) => t.id === task.id)
+    if (updated) return updated
+    return task
+  })
 
-    // Mark updated tasks for sync
-    for (const id of updatedIds) {
-      addPendingChange('tasks', id, 'update')
+  // Reassign sortOrder within categories
+  const byCategory = new Map<TaskCategory, Task[]>()
+  for (const task of tasksCache) {
+    if (!byCategory.has(task.category)) byCategory.set(task.category, [])
+    byCategory.get(task.category)!.push(task)
+  }
+
+  tasksCache = tasksCache.map((task) => {
+    const categoryTasks = byCategory.get(task.category) ?? []
+    const sorted = [...categoryTasks].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    const newSortOrder = sorted.findIndex((t) => t.id === task.id)
+    return { ...task, sortOrder: newSortOrder >= 0 ? newSortOrder : task.sortOrder }
+  })
+
+  // Persist updated tasks to Firestore
+  const tasksCollection = getTasksCollection()
+  for (const id of updatedIds) {
+    const task = tasksCache.find((t) => t.id === id)
+    if (task) {
+      await setDoc(doc(tasksCollection, id), task)
     }
-
-    debouncedSync()
   }
 
   return updatedIds.size

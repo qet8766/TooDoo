@@ -3,4 +3,3 @@ export { createTooDooOverlay, closeTooDooOverlay, getTooDooOverlay } from './too
 export { createQuickAddWindow } from './quick-add'
 export { createNotetankOverlay, closeNotetankOverlay, getNotetankOverlay } from './notetank'
 export { createNoteEditorWindow, closeNoteEditorWindow } from './note-editor'
-export { createSetupWindow, closeSetupWindow, waitForSetupComplete, completeSetup } from './setup'

@@ -18,19 +18,6 @@ export const IPC = {
   NOTES_UPDATE: 'notes:update',
   NOTES_DELETE: 'notes:delete',
   NOTES_CHANGED: 'notes:changed',
-  // NAS Configuration
-  CONFIG_GET: 'config:get',
-  CONFIG_SET_NAS_PATH: 'config:set-nas-path',
-  CONFIG_VALIDATE_PATH: 'config:validate-path',
-  CONFIG_NEEDS_SETUP: 'config:needs-setup',
-  CONFIG_RELOAD: 'config:reload',
-  // NAS Sync
-  NAS_SYNC_STATUS: 'nas:sync-status',
-  NAS_TRIGGER_SYNC: 'nas:trigger-sync',
-  NAS_RESET_CIRCUIT_BREAKER: 'nas:reset-circuit-breaker',
-  // Setup
-  SETUP_BROWSE_FOLDER: 'setup:browse-folder',
-  SETUP_COMPLETE: 'setup:complete',
   // Window control
   TOGGLE_OVERLAY: 'toggle-overlay',
   QUICK_ADD_OPEN: 'quick-add:open',

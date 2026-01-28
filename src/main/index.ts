@@ -10,27 +10,15 @@ import {
   updateTask,
   updateProjectNote,
   reorderTask,
-  getSyncStatus,
-  triggerSync,
-  stopSyncScheduler,
+  stopListeners,
   getNotes,
   addNote,
   updateNote,
   deleteNote,
-  reinitializeWithNas,
-  resetCircuitBreaker,
   recalculateScheduledCategories,
 } from './db/database'
 import { broadcastTaskChange } from './broadcast'
-import {
-  initConfig,
-  getConfig,
-  setNasPath,
-  validateNasPath,
-  needsSetup,
-  reloadConfig,
-} from './db/config'
-import { app, BrowserWindow, ipcMain, dialog } from './electron'
+import { app, BrowserWindow, ipcMain } from './electron'
 import { IPC } from '@shared/ipc'
 import {
   configureRendererTarget,
@@ -40,9 +28,6 @@ import {
   createQuickAddWindow,
   createNoteEditorWindow,
   closeNoteEditorWindow,
-  createSetupWindow,
-  waitForSetupComplete,
-  completeSetup,
 } from './windows'
 import { registerShortcut, unregisterShortcut, SHORTCUTS } from './shortcuts'
 import { handleWithBroadcast, handleWithNotesBroadcast, handleSimple } from './ipc-factory'
@@ -109,19 +94,21 @@ const startCategoryRecalculation = () => {
   if (categoryRecalcInterval) return
 
   // Run initial recalculation
-  const initialUpdates = recalculateScheduledCategories()
-  if (initialUpdates > 0) {
-    console.log(`Initial category recalculation: updated ${initialUpdates} task(s)`)
-    broadcastTaskChange()
-  }
+  recalculateScheduledCategories().then((initialUpdates) => {
+    if (initialUpdates > 0) {
+      console.log(`Initial category recalculation: updated ${initialUpdates} task(s)`)
+      broadcastTaskChange()
+    }
+  })
 
   // Set up periodic recalculation
   categoryRecalcInterval = setInterval(() => {
-    const updated = recalculateScheduledCategories()
-    if (updated > 0) {
-      console.log(`Category recalculation: updated ${updated} task(s)`)
-      broadcastTaskChange()
-    }
+    recalculateScheduledCategories().then((updated) => {
+      if (updated > 0) {
+        console.log(`Category recalculation: updated ${updated} task(s)`)
+        broadcastTaskChange()
+      }
+    })
   }, CATEGORY_RECALC_INTERVAL_MS)
 }
 
@@ -133,18 +120,10 @@ const stopCategoryRecalculation = () => {
 }
 
 const bootstrap = async () => {
-  // Initialize configuration first
-  initConfig()
   configureRendererTarget({ devServerUrl, indexHtml })
 
-  // Check if NAS path needs to be configured
-  if (needsSetup()) {
-    createSetupWindow()
-    await waitForSetupComplete()
-  }
-
-  // Initialize database (starts NAS sync if configured)
-  initDatabase()
+  // Initialize database (connects to Firebase)
+  await initDatabase()
 
   // Start scheduled task category recalculation
   startCategoryRecalculation()
@@ -165,7 +144,7 @@ app.on('activate', () => {
 
 app.on('window-all-closed', () => {
   manageShortcuts('unregister')
-  stopSyncScheduler()
+  stopListeners()
   stopCategoryRecalculation()
   if (process.platform !== 'darwin') {
     app.quit()
@@ -173,7 +152,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  stopSyncScheduler()
+  stopListeners()
   stopCategoryRecalculation()
   manageShortcuts('unregister')
 })
@@ -191,14 +170,14 @@ ipcMain.on(IPC.TOGGLE_OVERLAY, (_event: IpcMainEvent, isActive: boolean) => {
 handleSimple(IPC.TASKS_LIST, getTasks)
 handleWithBroadcast(IPC.TASKS_ADD, addTask)
 handleWithBroadcast(IPC.TASKS_UPDATE, updateTask)
-handleWithBroadcast(IPC.TASKS_DELETE, (id: string) => { deleteTask(id); return { id } })
-handleWithBroadcast(IPC.TASKS_REORDER, (p: { taskId: string; targetIndex: number }) => {
-  const success = reorderTask(p.taskId, p.targetIndex)
+handleWithBroadcast(IPC.TASKS_DELETE, async (id: string) => { await deleteTask(id); return { id } })
+handleWithBroadcast(IPC.TASKS_REORDER, async (p: { taskId: string; targetIndex: number }) => {
+  const success = await reorderTask(p.taskId, p.targetIndex)
   return { success }
 })
 handleWithBroadcast(IPC.TASKS_NOTE_ADD, addProjectNote)
 handleWithBroadcast(IPC.TASKS_NOTE_UPDATE, updateProjectNote)
-handleWithBroadcast(IPC.TASKS_NOTE_DELETE, (id: string) => { deleteProjectNote(id); return { id } })
+handleWithBroadcast(IPC.TASKS_NOTE_DELETE, async (id: string) => { await deleteProjectNote(id); return { id } })
 
 ipcMain.on(IPC.QUICK_ADD_OPEN, (_event: IpcMainEvent, category: string) => {
   createQuickAddWindow(category)
@@ -208,7 +187,7 @@ ipcMain.on(IPC.QUICK_ADD_OPEN, (_event: IpcMainEvent, category: string) => {
 handleSimple(IPC.NOTES_LIST, getNotes)
 handleWithNotesBroadcast(IPC.NOTES_ADD, addNote)
 handleWithNotesBroadcast(IPC.NOTES_UPDATE, updateNote)
-handleWithNotesBroadcast(IPC.NOTES_DELETE, (id: string) => { deleteNote(id); return { id } })
+handleWithNotesBroadcast(IPC.NOTES_DELETE, async (id: string) => { await deleteNote(id); return { id } })
 
 ipcMain.on(IPC.NOTE_EDITOR_OPEN, (_event: IpcMainEvent, noteId?: string) => {
   createNoteEditorWindow(noteId)
@@ -224,33 +203,6 @@ ipcMain.on(IPC.SWITCH_VIEW, (_event: IpcMainEvent, view: 'toodoo' | 'notetank') 
   if (!win) return
   // Navigate within the same window using hash routing
   win.webContents.executeJavaScript(`window.location.hash = '/${view}'`)
-})
-
-// --- NAS Configuration Handlers ---
-handleSimple(IPC.CONFIG_GET, getConfig)
-handleSimple(IPC.CONFIG_SET_NAS_PATH, setNasPath)
-handleSimple(IPC.CONFIG_VALIDATE_PATH, validateNasPath)
-handleSimple(IPC.CONFIG_NEEDS_SETUP, needsSetup)
-handleSimple(IPC.CONFIG_RELOAD, reloadConfig)
-
-// --- NAS Sync Handlers ---
-handleSimple(IPC.NAS_SYNC_STATUS, getSyncStatus)
-handleSimple(IPC.NAS_TRIGGER_SYNC, triggerSync)
-handleSimple(IPC.NAS_RESET_CIRCUIT_BREAKER, resetCircuitBreaker)
-
-// --- Setup Handlers ---
-ipcMain.handle(IPC.SETUP_BROWSE_FOLDER, async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ['openDirectory'],
-    title: 'Select NAS Folder',
-  })
-  return result.canceled ? null : result.filePaths[0]
-})
-
-ipcMain.handle(IPC.SETUP_COMPLETE, async () => {
-  // Reinitialize database with new NAS path
-  reinitializeWithNas()
-  completeSetup()
 })
 
 // --- Focus Mode (Minimize/Expand) ---

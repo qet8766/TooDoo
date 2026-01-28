@@ -5,18 +5,9 @@ import { CalendarPanel } from '../components/Calendar'
 
 const FONT_SIZE_KEY = 'toodoo-font-size'
 const DEFAULT_FONT_SIZE = 14
-const SYNC_STATUS_POLL_MS = 5000
 const DELETE_ARM_TIMEOUT_MS = 2000
 const MINIMIZE_DURATION_MS = 60 * 60 * 1000 // 1 hour
 const MINIMIZE_CHECK_INTERVAL_MS = 60 * 1000 // check every minute
-
-type SyncStatus = {
-  isOnline: boolean
-  pendingCount: number
-  lastSyncAt: number
-  circuitBreakerOpen: boolean
-  nextRetryAt: number | null
-}
 
 const TooDooOverlay = () => {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -27,7 +18,6 @@ const TooDooOverlay = () => {
   const [editingNote, setEditingNote] = useState<{ noteId: string; content: string } | null>(null)
   const [armedForDelete, setArmedForDelete] = useState<Set<string>>(new Set())
   const deleteTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null)
   const [fontSize, setFontSize] = useState(() => {
     const saved = localStorage.getItem(FONT_SIZE_KEY)
     return saved ? parseInt(saved, 10) : DEFAULT_FONT_SIZE
@@ -46,21 +36,6 @@ const TooDooOverlay = () => {
       window.toodoo.setCalendarOpen(isCalendarOpen)
     }
   }, [isCalendarOpen])
-
-  // Poll sync status
-  useEffect(() => {
-    const fetchSyncStatus = async () => {
-      try {
-        const status = await window.toodoo.sync.getStatus()
-        setSyncStatus(status)
-      } catch (error) {
-        console.error('Failed to get sync status:', error)
-      }
-    }
-    fetchSyncStatus()
-    const interval = setInterval(fetchSyncStatus, SYNC_STATUS_POLL_MS)
-    return () => clearInterval(interval)
-  }, [])
 
   const handleFontSizeChange = (delta: number) => {
     const newSize = Math.max(10, Math.min(24, fontSize + delta))
@@ -426,27 +401,6 @@ const TooDooOverlay = () => {
           </>
         )}
         <div className="topbar-controls no-drag">
-          {syncStatus && (
-            <div
-              className={`sync-indicator ${syncStatus.circuitBreakerOpen ? 'error' : syncStatus.isOnline ? 'online' : 'offline'}`}
-              title={
-                syncStatus.circuitBreakerOpen
-                  ? `Sync paused - too many failures. Click to retry.`
-                  : syncStatus.isOnline
-                    ? `Online${syncStatus.pendingCount > 0 ? ` - ${syncStatus.pendingCount} pending` : ''}`
-                    : 'Offline - changes will sync when connected'
-              }
-              onClick={syncStatus.circuitBreakerOpen ? () => window.toodoo.sync.resetCircuitBreaker() : undefined}
-              style={syncStatus.circuitBreakerOpen ? { cursor: 'pointer' } : undefined}
-            >
-              <span className="sync-dot" />
-              {syncStatus.circuitBreakerOpen ? (
-                <span className="sync-error">!</span>
-              ) : syncStatus.pendingCount > 0 ? (
-                <span className="sync-pending">{syncStatus.pendingCount}</span>
-              ) : null}
-            </div>
-          )}
           <button className="font-btn" onClick={() => handleFontSizeChange(-1)}>A-</button>
           <button className="font-btn" onClick={() => handleFontSizeChange(1)}>A+</button>
           {isMinimized ? (
