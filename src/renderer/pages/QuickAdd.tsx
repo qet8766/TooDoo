@@ -54,7 +54,7 @@ const QuickAdd = () => {
       }
       setStatus('Added!')
       // Await the delay before closing (no race condition)
-      await new Promise(resolve => setTimeout(resolve, 300))
+      await new Promise((resolve) => setTimeout(resolve, 300))
       window.close()
     } catch (error) {
       console.error('Failed to add task from quick-add', error)

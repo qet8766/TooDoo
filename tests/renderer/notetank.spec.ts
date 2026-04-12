@@ -20,7 +20,8 @@ const sampleNotes: Note[] = [
   {
     id: 'note-2',
     title: 'Second Note with Long Content',
-    content: 'This is a much longer note that contains quite a bit of text. It should be truncated in the preview mode but shown in full when expanded. The content continues here with more details about the note.',
+    content:
+      'This is a much longer note that contains quite a bit of text. It should be truncated in the preview mode but shown in full when expanded. The content continues here with more details about the note.',
     createdAt: Date.now() - 172800000,
     updatedAt: Date.now() - 7200000,
     isDeleted: false,
@@ -389,15 +390,11 @@ test.describe('Notetank Overlay', () => {
       await page.waitForLoadState('domcontentloaded')
 
       const shell = page.locator('.notetank-shell')
-      const initialFontSize = await shell.evaluate((el) =>
-        parseInt(window.getComputedStyle(el).fontSize)
-      )
+      const initialFontSize = await shell.evaluate((el) => parseInt(window.getComputedStyle(el).fontSize))
 
       await page.click('.font-btn:has-text("A+")')
 
-      const newFontSize = await shell.evaluate((el) =>
-        parseInt(window.getComputedStyle(el).fontSize)
-      )
+      const newFontSize = await shell.evaluate((el) => parseInt(window.getComputedStyle(el).fontSize))
 
       expect(newFontSize).toBe(initialFontSize + 1)
     })
@@ -408,15 +405,11 @@ test.describe('Notetank Overlay', () => {
       await page.waitForLoadState('domcontentloaded')
 
       const shell = page.locator('.notetank-shell')
-      const initialFontSize = await shell.evaluate((el) =>
-        parseInt(window.getComputedStyle(el).fontSize)
-      )
+      const initialFontSize = await shell.evaluate((el) => parseInt(window.getComputedStyle(el).fontSize))
 
       await page.click('.font-btn:has-text("A-")')
 
-      const newFontSize = await shell.evaluate((el) =>
-        parseInt(window.getComputedStyle(el).fontSize)
-      )
+      const newFontSize = await shell.evaluate((el) => parseInt(window.getComputedStyle(el).fontSize))
 
       expect(newFontSize).toBe(initialFontSize - 1)
     })

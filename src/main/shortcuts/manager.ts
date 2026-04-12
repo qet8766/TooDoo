@@ -23,9 +23,13 @@ export const registerShortcut = (id: ShortcutId, handler: () => void | Promise<v
   if (globalShortcut.isRegistered(def.accelerator)) globalShortcut.unregister(def.accelerator)
 
   // Wrap handler to force CapsLock OFF if that's the accelerator
-  const wrappedHandler = def.accelerator === 'CapsLock'
-    ? () => { forceCapsLockOff(); void handler() }
-    : () => void handler()
+  const wrappedHandler =
+    def.accelerator === 'CapsLock'
+      ? () => {
+          forceCapsLockOff()
+          void handler()
+        }
+      : () => void handler()
 
   return globalShortcut.register(def.accelerator, wrappedHandler)
 }

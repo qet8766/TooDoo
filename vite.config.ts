@@ -39,11 +39,7 @@ const resolveDevServerPort = async (): Promise<number> => {
   const fromEnv = parsePort(process.env.VITE_PORT) ?? parsePort(process.env.PORT)
   if (fromEnv) return fromEnv
 
-  const candidates = [
-    ...Array.from({ length: 10 }, (_value, index) => DEFAULT_DEV_SERVER_PORT + index),
-    3000,
-    3001,
-  ]
+  const candidates = [...Array.from({ length: 10 }, (_value, index) => DEFAULT_DEV_SERVER_PORT + index), 3000, 3001]
   for (const port of candidates) {
     if (await canListen(DEV_SERVER_HOST, port)) return port
   }

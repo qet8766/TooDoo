@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page } from '@playwright/test'
 import type { Task, ProjectNote } from '../src/shared/types'
 
 export type { Task, ProjectNote }
@@ -51,7 +51,7 @@ export const sampleTasks: Task[] = [
       },
     ],
   },
-];
+]
 
 // Script to inject as string - must be self-contained
 const createMockScript = (tasks: Task[]) => `
@@ -176,28 +176,28 @@ const createMockScript = (tasks: Task[]) => `
   console.log('[Mock] window.toodoo =', window.toodoo);
   console.log('[Mock] "toodoo" in window =', 'toodoo' in window);
 })();
-`;
+`
 
 /**
  * Inject window.toodoo mock into the page before it loads.
  * Uses route interception to inject the mock script into HTML.
  */
 export async function injectToodooMock(page: Page, initialTasks: Task[] = sampleTasks) {
-  const mockScript = createMockScript(initialTasks);
+  const mockScript = createMockScript(initialTasks)
 
   // Clear any existing routes first (for tests that call this multiple times)
-  await page.unroute('**/*');
+  await page.unroute('**/*')
 
   // Intercept HTML and inject the mock script
   await page.route('**/*', async (route) => {
-    const request = route.request();
+    const request = route.request()
 
     if (request.resourceType() === 'document') {
-      const response = await route.fetch();
-      let html = await response.text();
+      const response = await route.fetch()
+      let html = await response.text()
 
       // Inject mock script BEFORE any other scripts, right after <head>
-      html = html.replace('<head>', `<head><script>${mockScript}</script>`);
+      html = html.replace('<head>', `<head><script>${mockScript}</script>`)
 
       await route.fulfill({
         response,
@@ -206,9 +206,9 @@ export async function injectToodooMock(page: Page, initialTasks: Task[] = sample
           ...response.headers(),
           'content-length': String(Buffer.byteLength(html)),
         },
-      });
+      })
     } else {
-      await route.continue();
+      await route.continue()
     }
-  });
+  })
 }

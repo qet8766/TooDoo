@@ -136,6 +136,7 @@ The project uses TypeScript path aliases (configured in `tsconfig.json` and `vit
 ## Single Instance Behavior
 
 The app enforces single-instance mode. When a new instance starts:
+
 1. The **old** instance automatically quits
 2. The **new** instance takes over after ~500ms
 

@@ -5,9 +5,9 @@
  */
 
 export interface Holiday {
-  date: string      // "YYYY-MM-DD" format
-  name: string      // Korean name
-  nameEn: string    // English name
+  date: string // "YYYY-MM-DD" format
+  name: string // Korean name
+  nameEn: string // English name
   isSubstitute: boolean // Whether this is a substitute holiday
 }
 
@@ -96,14 +96,14 @@ export const KOREAN_HOLIDAYS_2027: Holiday[] = [
 export const ALL_HOLIDAYS: Holiday[] = [...KOREAN_HOLIDAYS_2026, ...KOREAN_HOLIDAYS_2027]
 
 // Holiday lookup map for O(1) access
-const holidayMap = new Map<string, Holiday>(ALL_HOLIDAYS.map(h => [h.date, h]))
+const holidayMap = new Map<string, Holiday>(ALL_HOLIDAYS.map((h) => [h.date, h]))
 
 /**
  * Get holidays for a specific month
  */
 export const getHolidaysByMonth = (year: number, month: number): Holiday[] => {
   const prefix = `${year}-${String(month).padStart(2, '0')}`
-  return ALL_HOLIDAYS.filter(h => h.date.startsWith(prefix))
+  return ALL_HOLIDAYS.filter((h) => h.date.startsWith(prefix))
 }
 
 /**

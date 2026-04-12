@@ -32,10 +32,7 @@ const NotetankOverlay = () => {
   const filteredNotes = useMemo(() => {
     if (!searchQuery.trim()) return notes
     const q = searchQuery.toLowerCase()
-    return notes.filter(n =>
-      n.title.toLowerCase().includes(q) ||
-      n.content.toLowerCase().includes(q)
-    )
+    return notes.filter((n) => n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q))
   }, [notes, searchQuery])
 
   const handleNewNote = () => {
@@ -49,7 +46,7 @@ const NotetankOverlay = () => {
   const handleDeleteNote = async (noteId: string) => {
     disarmDelete(noteId)
     await window.toodoo.notes.remove(noteId)
-    setNotes(prev => prev.filter(n => n.id !== noteId))
+    setNotes((prev) => prev.filter((n) => n.id !== noteId))
   }
 
   const handleNoteDeleteClick = (noteId: string) => {
@@ -61,7 +58,7 @@ const NotetankOverlay = () => {
   }
 
   const toggleExpand = (noteId: string) => {
-    setExpandedNotes(prev => {
+    setExpandedNotes((prev) => {
       const next = new Set(prev)
       if (next.has(noteId)) {
         next.delete(noteId)
@@ -85,8 +82,12 @@ const NotetankOverlay = () => {
           </button>
         </div>
         <div className="topbar-controls no-drag">
-          <button className="font-btn" onClick={() => handleFontSizeChange(-1)}>A-</button>
-          <button className="font-btn" onClick={() => handleFontSizeChange(1)}>A+</button>
+          <button className="font-btn" onClick={() => handleFontSizeChange(-1)}>
+            A-
+          </button>
+          <button className="font-btn" onClick={() => handleFontSizeChange(1)}>
+            A+
+          </button>
         </div>
       </div>
 
@@ -99,7 +100,9 @@ const NotetankOverlay = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-          <button className="small-button add-note-btn" onClick={handleNewNote}>+ New</button>
+          <button className="small-button add-note-btn" onClick={handleNewNote}>
+            + New
+          </button>
         </div>
 
         {isLoading ? (
@@ -108,7 +111,7 @@ const NotetankOverlay = () => {
           <p className="muted">{searchQuery ? 'No matching notes' : 'No notes yet. Press Alt+Shift+N to add one!'}</p>
         ) : (
           <div className="note-list">
-            {filteredNotes.map(note => (
+            {filteredNotes.map((note) => (
               <div key={note.id} className={`note-card ${expandedNotes.has(note.id) ? 'expanded' : ''}`}>
                 <div className="note-card-header">
                   <div
@@ -119,11 +122,11 @@ const NotetankOverlay = () => {
                   </div>
                   <div className="note-title-area" onClick={() => toggleExpand(note.id)}>
                     <h4 className="note-title">{note.title}</h4>
-                    <span className="note-meta">
-                      {new Date(note.updatedAt).toLocaleDateString()}
-                    </span>
+                    <span className="note-meta">{new Date(note.updatedAt).toLocaleDateString()}</span>
                   </div>
-                  <button className="small-button" onClick={() => handleEditNote(note.id)}>Edit</button>
+                  <button className="small-button" onClick={() => handleEditNote(note.id)}>
+                    Edit
+                  </button>
                 </div>
                 {expandedNotes.has(note.id) && note.content && (
                   <div className="note-content-expanded" onDoubleClick={() => handleEditNote(note.id)}>
@@ -132,7 +135,8 @@ const NotetankOverlay = () => {
                 )}
                 {!expandedNotes.has(note.id) && note.content && (
                   <p className="note-content-preview" onClick={() => toggleExpand(note.id)}>
-                    {note.content.slice(0, 100)}{note.content.length > 100 ? '...' : ''}
+                    {note.content.slice(0, 100)}
+                    {note.content.length > 100 ? '...' : ''}
                   </p>
                 )}
               </div>

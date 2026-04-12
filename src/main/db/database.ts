@@ -1,11 +1,4 @@
-import {
-  doc,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  onSnapshot,
-  type Unsubscribe,
-} from 'firebase/firestore'
+import { doc, getDocs, setDoc, deleteDoc, onSnapshot, type Unsubscribe } from 'firebase/firestore'
 import type { Note, ProjectNote, Task, TaskCategory } from '@shared/types'
 import { ALL_CATEGORIES } from '@shared/categories'
 import { calculateEffectiveCategory, getTasksNeedingUpdate } from '@shared/category-calculator'
@@ -42,7 +35,7 @@ const startListeners = () => {
     },
     (error) => {
       console.error('Firestore tasks listener error:', error)
-    }
+    },
   )
 
   // Notes listener
@@ -55,7 +48,7 @@ const startListeners = () => {
     },
     (error) => {
       console.error('Firestore notes listener error:', error)
-    }
+    },
   )
 }
 
@@ -98,14 +91,9 @@ export const initDatabase = async (): Promise<void> => {
 
 // --- Validation ---
 
-const validate = (rules: [boolean, string][]): string | null =>
-  rules.find(([fail]) => fail)?.[1] ?? null
+const validate = (rules: [boolean, string][]): string | null => rules.find(([fail]) => fail)?.[1] ?? null
 
-const validateTask = (p: {
-  title?: string
-  description?: string | null
-  category?: TaskCategory
-}): string | null =>
+const validateTask = (p: { title?: string; description?: string | null; category?: TaskCategory }): string | null =>
   validate([
     [p.title !== undefined && typeof p.title !== 'string', 'Title must be a string'],
     [typeof p.title === 'string' && !p.title.trim(), 'Title cannot be empty'],
@@ -216,10 +204,8 @@ export const updateTask = async (p: {
   const now = Date.now()
 
   // Handle scheduling field updates
-  const newScheduledDate =
-    p.scheduledDate === null ? undefined : (p.scheduledDate ?? existing.scheduledDate)
-  const newScheduledTime =
-    p.scheduledTime === null ? undefined : (p.scheduledTime ?? existing.scheduledTime)
+  const newScheduledDate = p.scheduledDate === null ? undefined : (p.scheduledDate ?? existing.scheduledDate)
+  const newScheduledTime = p.scheduledTime === null ? undefined : (p.scheduledTime ?? existing.scheduledTime)
 
   // Determine base category
   let newBaseCategory = existing.baseCategory
@@ -256,8 +242,7 @@ export const updateTask = async (p: {
   const updated: Task = {
     ...existing,
     title: p.title !== undefined ? p.title.trim() : existing.title,
-    description:
-      p.description === null ? undefined : (p.description?.trim() ?? existing.description),
+    description: p.description === null ? undefined : (p.description?.trim() ?? existing.description),
     category: effectiveCategory,
     baseCategory: newBaseCategory,
     scheduledDate: newScheduledDate,
@@ -285,9 +270,7 @@ export const updateTask = async (p: {
 
   // Update shifted tasks if category changed
   if (categoryChanged) {
-    for (const t of tasksCache.filter(
-      (t) => t.category === effectiveCategory && t.id !== updated.id
-    )) {
+    for (const t of tasksCache.filter((t) => t.category === effectiveCategory && t.id !== updated.id)) {
       await setDoc(doc(tasksCollection, t.id), t)
     }
   }
@@ -448,11 +431,7 @@ export const getNotes = async (): Promise<Note[]> => {
   return notesCache
 }
 
-export const addNote = async (p: {
-  id: string
-  title: string
-  content: string
-}): Promise<Note | { error: string }> => {
+export const addNote = async (p: { id: string; title: string; content: string }): Promise<Note | { error: string }> => {
   const err = validateNotetankNote(p)
   if (err) return { error: err }
 

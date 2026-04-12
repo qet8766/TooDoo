@@ -31,7 +31,7 @@ export type PromotableCategory = 'scorching' | 'hot' | 'warm' | 'cool'
 export const calculateEffectiveCategory = (
   scheduledDate: number,
   scheduledTime: string | undefined,
-  now: number = Date.now()
+  now: number = Date.now(),
 ): PromotableCategory => {
   let targetTimestamp: number
 
@@ -109,11 +109,7 @@ export const needsCategoryUpdate = (task: Task, now: number = Date.now()): boole
   // Completed tasks don't need updating
   if (task.isDone) return false
 
-  const newCategory = calculateEffectiveCategory(
-    task.scheduledDate,
-    task.scheduledTime,
-    now
-  )
+  const newCategory = calculateEffectiveCategory(task.scheduledDate, task.scheduledTime, now)
 
   return task.category !== newCategory
 }
@@ -126,7 +122,7 @@ export const needsCategoryUpdate = (task: Task, now: number = Date.now()): boole
  * @returns Array of tasks that need updating
  */
 export const getTasksNeedingUpdate = (tasks: Task[], now: number = Date.now()): Task[] => {
-  return tasks.filter(task => needsCategoryUpdate(task, now))
+  return tasks.filter((task) => needsCategoryUpdate(task, now))
 }
 
 /**
@@ -136,15 +132,8 @@ export const getTasksNeedingUpdate = (tasks: Task[], now: number = Date.now()): 
  * @param now - Current timestamp
  * @returns The new category, or undefined if no change needed
  */
-export const getUpdatedCategory = (
-  task: Task,
-  now: number = Date.now()
-): TaskCategory | undefined => {
+export const getUpdatedCategory = (task: Task, now: number = Date.now()): TaskCategory | undefined => {
   if (!needsCategoryUpdate(task, now)) return undefined
 
-  return calculateEffectiveCategory(
-    task.scheduledDate!,
-    task.scheduledTime,
-    now
-  )
+  return calculateEffectiveCategory(task.scheduledDate!, task.scheduledTime, now)
 }

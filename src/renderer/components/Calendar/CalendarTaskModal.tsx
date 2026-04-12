@@ -40,7 +40,7 @@ export const CalendarTaskModal = ({ date, tasks, onClose }: CalendarTaskModalPro
       const payload = {
         id: crypto.randomUUID(),
         title: trimmed,
-        category: 'cool' as const,  // Always cool - will auto-promote based on date
+        category: 'cool' as const, // Always cool - will auto-promote based on date
         scheduledDate: scheduledDate.getTime(),
         scheduledTime: time || undefined,
       }
@@ -73,21 +73,21 @@ export const CalendarTaskModal = ({ date, tasks, onClose }: CalendarTaskModalPro
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="calendar-task-modal no-drag" onClick={e => e.stopPropagation()}>
+      <div className="calendar-task-modal no-drag" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h4>{formatDateDisplay(date)}</h4>
           {holiday && (
-            <span className={`holiday-badge ${holiday.isSubstitute ? 'substitute' : ''}`}>
-              {holiday.name}
-            </span>
+            <span className={`holiday-badge ${holiday.isSubstitute ? 'substitute' : ''}`}>{holiday.name}</span>
           )}
-          <button className="close-btn" onClick={onClose}>&times;</button>
+          <button className="close-btn" onClick={onClose}>
+            &times;
+          </button>
         </div>
 
         {tasks.length > 0 && (
           <div className="existing-tasks">
             <p className="section-label">Scheduled Tasks</p>
-            {tasks.map(task => (
+            {tasks.map((task) => (
               <div key={task.id} className={`task-preview tone-${CATEGORIES[task.category].tone}`}>
                 <span className="task-dot" />
                 <span className="task-name">{task.title}</span>
@@ -103,7 +103,7 @@ export const CalendarTaskModal = ({ date, tasks, onClose }: CalendarTaskModalPro
           <input
             type="text"
             value={title}
-            onChange={e => setTitle(e.target.value)}
+            onChange={(e) => setTitle(e.target.value)}
             placeholder="Task title"
             className="task-input"
             autoFocus
@@ -113,21 +113,15 @@ export const CalendarTaskModal = ({ date, tasks, onClose }: CalendarTaskModalPro
           <input
             type="time"
             value={time}
-            onChange={e => setTime(e.target.value)}
+            onChange={(e) => setTime(e.target.value)}
             className="time-input"
             title="Time (optional)"
             placeholder="Time (optional)"
           />
 
-          <p className="category-hint">
-            Priority auto-adjusts: cool → warm → hot → scorching as date approaches
-          </p>
+          <p className="category-hint">Priority auto-adjusts: cool → warm → hot → scorching as date approaches</p>
 
-          <button
-            type="submit"
-            className="button add-btn"
-            disabled={isSubmitting || !title.trim()}
-          >
+          <button type="submit" className="button add-btn" disabled={isSubmitting || !title.trim()}>
             Schedule Task
           </button>
 

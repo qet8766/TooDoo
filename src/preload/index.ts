@@ -1,16 +1,30 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Note, ProjectNote, Task } from '@shared/types'
-import { IPC, type ErrorResponse, type NoteCreatePayload, type NoteUpdatePayload, type ProjectNoteCreatePayload, type ProjectNoteUpdatePayload, type TaskCreatePayload, type TaskUpdatePayload, type TaskReorderPayload } from '@shared/ipc'
+import {
+  IPC,
+  type ErrorResponse,
+  type NoteCreatePayload,
+  type NoteUpdatePayload,
+  type ProjectNoteCreatePayload,
+  type ProjectNoteUpdatePayload,
+  type TaskCreatePayload,
+  type TaskUpdatePayload,
+  type TaskReorderPayload,
+} from '@shared/ipc'
 
 // Tasks API
 const tasksApi = {
   list: () => ipcRenderer.invoke(IPC.TASKS_LIST) as Promise<Task[]>,
   add: (payload: TaskCreatePayload) => ipcRenderer.invoke(IPC.TASKS_ADD, payload) as Promise<Task | ErrorResponse>,
-  update: (payload: TaskUpdatePayload) => ipcRenderer.invoke(IPC.TASKS_UPDATE, payload) as Promise<Task | null | ErrorResponse>,
+  update: (payload: TaskUpdatePayload) =>
+    ipcRenderer.invoke(IPC.TASKS_UPDATE, payload) as Promise<Task | null | ErrorResponse>,
   remove: (id: string) => ipcRenderer.invoke(IPC.TASKS_DELETE, id) as Promise<{ id: string }>,
-  reorder: (payload: TaskReorderPayload) => ipcRenderer.invoke(IPC.TASKS_REORDER, payload) as Promise<{ success: boolean }>,
-  addNote: (payload: ProjectNoteCreatePayload) => ipcRenderer.invoke(IPC.TASKS_NOTE_ADD, payload) as Promise<ProjectNote | ErrorResponse>,
-  updateNote: (payload: ProjectNoteUpdatePayload) => ipcRenderer.invoke(IPC.TASKS_NOTE_UPDATE, payload) as Promise<ProjectNote | null | ErrorResponse>,
+  reorder: (payload: TaskReorderPayload) =>
+    ipcRenderer.invoke(IPC.TASKS_REORDER, payload) as Promise<{ success: boolean }>,
+  addNote: (payload: ProjectNoteCreatePayload) =>
+    ipcRenderer.invoke(IPC.TASKS_NOTE_ADD, payload) as Promise<ProjectNote | ErrorResponse>,
+  updateNote: (payload: ProjectNoteUpdatePayload) =>
+    ipcRenderer.invoke(IPC.TASKS_NOTE_UPDATE, payload) as Promise<ProjectNote | null | ErrorResponse>,
   removeNote: (id: string) => ipcRenderer.invoke(IPC.TASKS_NOTE_DELETE, id) as Promise<{ id: string }>,
 }
 
@@ -30,7 +44,8 @@ const openQuickAdd = (category: string) => ipcRenderer.send(IPC.QUICK_ADD_OPEN, 
 const notesApi = {
   list: () => ipcRenderer.invoke(IPC.NOTES_LIST) as Promise<Note[]>,
   add: (payload: NoteCreatePayload) => ipcRenderer.invoke(IPC.NOTES_ADD, payload) as Promise<Note | ErrorResponse>,
-  update: (payload: NoteUpdatePayload) => ipcRenderer.invoke(IPC.NOTES_UPDATE, payload) as Promise<Note | null | ErrorResponse>,
+  update: (payload: NoteUpdatePayload) =>
+    ipcRenderer.invoke(IPC.NOTES_UPDATE, payload) as Promise<Note | null | ErrorResponse>,
   remove: (id: string) => ipcRenderer.invoke(IPC.NOTES_DELETE, id) as Promise<{ id: string }>,
 }
 
@@ -60,7 +75,8 @@ const setMinimized = (isMinimized: boolean) => ipcRenderer.send(IPC.WINDOW_SET_M
 const setCalendarOpen = (isOpen: boolean) => ipcRenderer.send(IPC.WINDOW_SET_CALENDAR_OPEN, isOpen)
 
 // Window resize - for custom resize handles
-const resizeWindow = (deltaWidth: number, deltaHeight: number) => ipcRenderer.send(IPC.WINDOW_RESIZE, deltaWidth, deltaHeight)
+const resizeWindow = (deltaWidth: number, deltaHeight: number) =>
+  ipcRenderer.send(IPC.WINDOW_RESIZE, deltaWidth, deltaHeight)
 
 // Exposed API
 const api = {

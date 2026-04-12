@@ -28,7 +28,8 @@ export const sampleNotes = {
   withLongContent: createNote({
     id: 'long-note',
     title: 'Note with Long Content',
-    content: 'This is a much longer note that contains multiple paragraphs.\n\nParagraph 2 continues here with more detailed information.\n\nParagraph 3 wraps up the note.',
+    content:
+      'This is a much longer note that contains multiple paragraphs.\n\nParagraph 2 continues here with more detailed information.\n\nParagraph 3 wraps up the note.',
   }),
   markdown: createNote({
     id: 'markdown-note',
@@ -40,7 +41,7 @@ export const sampleNotes = {
     id: 'old-note',
     title: 'Old Note',
     createdAt: Date.now() - 86400000 * 30, // 30 days ago
-    updatedAt: Date.now() - 86400000 * 7,  // Updated 7 days ago
+    updatedAt: Date.now() - 86400000 * 7, // Updated 7 days ago
   }),
 }
 

@@ -23,7 +23,7 @@ const NoteEditor = () => {
     const loadNote = async () => {
       try {
         const notes = await window.toodoo.notes.list()
-        const note = notes.find(n => n.id === noteId)
+        const note = notes.find((n) => n.id === noteId)
         if (note) {
           setTitle(note.title)
           setContent(note.content)
@@ -85,7 +85,7 @@ const NoteEditor = () => {
         }
       }
       setStatus('Saved!')
-      await new Promise(resolve => setTimeout(resolve, 200))
+      await new Promise((resolve) => setTimeout(resolve, 200))
       window.close()
     } catch (error) {
       console.error('Failed to save note:', error)

@@ -1,7 +1,14 @@
 import { createSingletonWindowManager, createWindow, loadRoute, repositionWindow, type WindowConfig } from './base'
 
 const manager = createSingletonWindowManager()
-const config: WindowConfig = { type: 'popup', route: '/note-editor', width: 400, height: 340, position: 'cursor', resizable: true }
+const config: WindowConfig = {
+  type: 'popup',
+  route: '/note-editor',
+  width: 400,
+  height: 340,
+  position: 'cursor',
+  resizable: true,
+}
 
 export const createNoteEditorWindow = (noteId?: string) => {
   const route = noteId ? `/note-editor?id=${encodeURIComponent(noteId)}` : '/note-editor'

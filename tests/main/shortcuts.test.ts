@@ -35,7 +35,7 @@ describe('Shortcut Definitions', () => {
     })
 
     it('should have unique accelerators', () => {
-      const accelerators = Object.values(SHORTCUTS).map(s => s.accelerator)
+      const accelerators = Object.values(SHORTCUTS).map((s) => s.accelerator)
       const uniqueAccelerators = new Set(accelerators)
       expect(uniqueAccelerators.size).toBe(accelerators.length)
     })
@@ -78,7 +78,7 @@ describe('Shortcut Definitions', () => {
   describe('Category mapping', () => {
     it('all task shortcuts should have valid categories', () => {
       const validCategories = ['scorching', 'hot', 'warm', 'cool', 'project']
-      const taskShortcuts = Object.values(SHORTCUTS).filter(s => s.category !== null)
+      const taskShortcuts = Object.values(SHORTCUTS).filter((s) => s.category !== null)
 
       for (const shortcut of taskShortcuts) {
         expect(validCategories).toContain(shortcut.category)
@@ -86,9 +86,7 @@ describe('Shortcut Definitions', () => {
     })
 
     it('notetank shortcuts should have null category', () => {
-      const notetankShortcuts = Object.values(SHORTCUTS).filter(s =>
-        s.id.startsWith('notetank:')
-      )
+      const notetankShortcuts = Object.values(SHORTCUTS).filter((s) => s.id.startsWith('notetank:'))
 
       for (const shortcut of notetankShortcuts) {
         expect(shortcut.category).toBeNull()
@@ -110,15 +108,36 @@ describe('Accelerator Format', () => {
       // Function keys
       ...Array.from({ length: 24 }, (_, i) => `F${i + 1}`),
       // Special keys
-      'Space', 'Tab', 'Enter', 'Return', 'Escape', 'Esc',
-      'Backspace', 'Delete', 'Insert', 'Home', 'End',
-      'PageUp', 'PageDown', 'Left', 'Right', 'Up', 'Down',
-      'CapsLock', 'NumLock', 'ScrollLock', 'PrintScreen',
+      'Space',
+      'Tab',
+      'Enter',
+      'Return',
+      'Escape',
+      'Esc',
+      'Backspace',
+      'Delete',
+      'Insert',
+      'Home',
+      'End',
+      'PageUp',
+      'PageDown',
+      'Left',
+      'Right',
+      'Up',
+      'Down',
+      'CapsLock',
+      'NumLock',
+      'ScrollLock',
+      'PrintScreen',
       // Numbers
       ...'0123456789'.split(''),
       // Numpad
       ...Array.from({ length: 10 }, (_, i) => `num${i}`),
-      'numadd', 'numsub', 'nummult', 'numdiv', 'numdec',
+      'numadd',
+      'numsub',
+      'nummult',
+      'numdiv',
+      'numdec',
     ]
 
     for (const shortcut of Object.values(SHORTCUTS)) {

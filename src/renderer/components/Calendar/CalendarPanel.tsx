@@ -25,7 +25,7 @@ export const CalendarPanel = ({ isOpen, onToggle, tasks }: CalendarPanelProps) =
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
 
   // Filter to only scheduled tasks (not deleted)
-  const scheduledTasks = tasks.filter(t => t.scheduledDate && !t.isDeleted)
+  const scheduledTasks = tasks.filter((t) => t.scheduledDate && !t.isDeleted)
 
   const handleMonthChange = (newYear: number, newMonth: number) => {
     // Limit to 2026-2027
@@ -44,7 +44,7 @@ export const CalendarPanel = ({ isOpen, onToggle, tasks }: CalendarPanelProps) =
 
   // Get tasks for selected date
   const tasksForSelectedDate = selectedDate
-    ? scheduledTasks.filter(t => {
+    ? scheduledTasks.filter((t) => {
         if (!t.scheduledDate) return false
         const taskDate = formatDateStr(new Date(t.scheduledDate))
         const selectedStr = formatDateStr(selectedDate)
@@ -54,11 +54,7 @@ export const CalendarPanel = ({ isOpen, onToggle, tasks }: CalendarPanelProps) =
 
   if (!isOpen) {
     return (
-      <button
-        className="calendar-toggle-btn collapsed no-drag"
-        onClick={onToggle}
-        title="Open Calendar"
-      >
+      <button className="calendar-toggle-btn collapsed no-drag" onClick={onToggle} title="Open Calendar">
         <span className="toggle-icon">Cal</span>
       </button>
     )
@@ -68,11 +64,7 @@ export const CalendarPanel = ({ isOpen, onToggle, tasks }: CalendarPanelProps) =
     <div className="calendar-panel no-drag">
       <div className="calendar-panel-header">
         <span className="panel-title">Calendar</span>
-        <button
-          className="calendar-close-btn"
-          onClick={onToggle}
-          title="Close Calendar"
-        >
+        <button className="calendar-close-btn" onClick={onToggle} title="Close Calendar">
           &times;
         </button>
       </div>
@@ -86,11 +78,7 @@ export const CalendarPanel = ({ isOpen, onToggle, tasks }: CalendarPanelProps) =
       />
 
       {selectedDate && (
-        <CalendarTaskModal
-          date={selectedDate}
-          tasks={tasksForSelectedDate}
-          onClose={handleCloseModal}
-        />
+        <CalendarTaskModal date={selectedDate} tasks={tasksForSelectedDate} onClose={handleCloseModal} />
       )}
     </div>
   )

@@ -39,7 +39,7 @@ export const Calendar = ({ year, month, onMonthChange, onDateClick, scheduledTas
   // Map tasks by date string for quick lookup
   const tasksByDate = useMemo(() => {
     const map = new Map<string, Task[]>()
-    scheduledTasks.forEach(task => {
+    scheduledTasks.forEach((task) => {
       if (!task.scheduledDate) return
       const dateStr = formatDateStr(new Date(task.scheduledDate))
       if (!map.has(dateStr)) map.set(dateStr, [])
@@ -77,29 +77,20 @@ export const Calendar = ({ year, month, onMonthChange, onDateClick, scheduledTas
   return (
     <div className="calendar">
       <div className="calendar-header">
-        <button
-          className={`calendar-nav ${!canGoPrev ? 'disabled' : ''}`}
-          onClick={handlePrev}
-          disabled={!canGoPrev}
-        >
+        <button className={`calendar-nav ${!canGoPrev ? 'disabled' : ''}`} onClick={handlePrev} disabled={!canGoPrev}>
           &lt;
         </button>
-        <span className="calendar-title">{year}. {month}</span>
-        <button
-          className={`calendar-nav ${!canGoNext ? 'disabled' : ''}`}
-          onClick={handleNext}
-          disabled={!canGoNext}
-        >
+        <span className="calendar-title">
+          {year}. {month}
+        </span>
+        <button className={`calendar-nav ${!canGoNext ? 'disabled' : ''}`} onClick={handleNext} disabled={!canGoNext}>
           &gt;
         </button>
       </div>
 
       <div className="calendar-weekdays">
         {WEEKDAYS_KR.map((day, i) => (
-          <div
-            key={day}
-            className={`weekday ${i === 0 ? 'sunday' : i === 6 ? 'saturday' : ''}`}
-          >
+          <div key={day} className={`weekday ${i === 0 ? 'sunday' : i === 6 ? 'saturday' : ''}`}>
             {day}
           </div>
         ))}
@@ -127,19 +118,16 @@ export const Calendar = ({ year, month, onMonthChange, onDateClick, scheduledTas
               <span className="day-number">{date.getDate()}</span>
               {tasksOnDay.length > 0 && (
                 <div className="task-dots">
-                  {tasksOnDay.slice(0, 3).map(task => (
+                  {tasksOnDay.slice(0, 3).map((task) => (
                     <span key={task.id} className={`task-dot tone-${task.category}`} />
                   ))}
-                  {tasksOnDay.length > 3 && (
-                    <span className="task-more">+{tasksOnDay.length - 3}</span>
-                  )}
+                  {tasksOnDay.length > 3 && <span className="task-more">+{tasksOnDay.length - 3}</span>}
                 </div>
               )}
             </div>
           )
         })}
       </div>
-
     </div>
   )
 }

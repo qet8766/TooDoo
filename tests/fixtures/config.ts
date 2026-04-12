@@ -86,8 +86,24 @@ export const sampleCache = {
   },
   withTasks: {
     tasks: [
-      { id: 'cache-task-1', title: 'Cached Task 1', category: 'hot', isDone: false, createdAt: Date.now(), updatedAt: Date.now(), isDeleted: false },
-      { id: 'cache-task-2', title: 'Cached Task 2', category: 'warm', isDone: false, createdAt: Date.now(), updatedAt: Date.now(), isDeleted: false },
+      {
+        id: 'cache-task-1',
+        title: 'Cached Task 1',
+        category: 'hot',
+        isDone: false,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        isDeleted: false,
+      },
+      {
+        id: 'cache-task-2',
+        title: 'Cached Task 2',
+        category: 'warm',
+        isDone: false,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        isDeleted: false,
+      },
     ],
     notes: [],
     pendingChanges: [],
@@ -95,11 +111,25 @@ export const sampleCache = {
   },
   withPendingChanges: {
     tasks: [
-      { id: 'pending-task-1', title: 'Pending Task', category: 'hot', isDone: false, createdAt: Date.now(), updatedAt: Date.now(), isDeleted: false },
+      {
+        id: 'pending-task-1',
+        title: 'Pending Task',
+        category: 'hot',
+        isDone: false,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        isDeleted: false,
+      },
     ],
     notes: [],
     pendingChanges: [
-      { id: 'change-1', table: 'tasks' as const, recordId: 'pending-task-1', operation: 'create' as const, timestamp: Date.now() },
+      {
+        id: 'change-1',
+        table: 'tasks' as const,
+        recordId: 'pending-task-1',
+        operation: 'create' as const,
+        timestamp: Date.now(),
+      },
     ],
     lastNasSyncAt: Date.now() - 60000,
   },
@@ -117,10 +147,25 @@ export const sampleNasStore = {
   },
   withData: {
     tasks: [
-      { id: 'nas-task-1', title: 'NAS Task 1', category: 'hot', isDone: false, createdAt: Date.now() - 1000, updatedAt: Date.now() - 1000, isDeleted: false },
+      {
+        id: 'nas-task-1',
+        title: 'NAS Task 1',
+        category: 'hot',
+        isDone: false,
+        createdAt: Date.now() - 1000,
+        updatedAt: Date.now() - 1000,
+        isDeleted: false,
+      },
     ],
     notes: [
-      { id: 'nas-note-1', title: 'NAS Note 1', content: 'Content', createdAt: Date.now() - 1000, updatedAt: Date.now() - 1000, isDeleted: false },
+      {
+        id: 'nas-note-1',
+        title: 'NAS Note 1',
+        content: 'Content',
+        createdAt: Date.now() - 1000,
+        updatedAt: Date.now() - 1000,
+        isDeleted: false,
+      },
     ],
     lastModifiedAt: Date.now() - 1000,
     lastModifiedBy: 'other-machine',
@@ -128,7 +173,15 @@ export const sampleNasStore = {
   conflicting: {
     tasks: [
       // Same ID as local task but different content and older timestamp
-      { id: 'conflict-task-1', title: 'NAS Version', category: 'warm', isDone: false, createdAt: Date.now() - 2000, updatedAt: Date.now() - 500, isDeleted: false },
+      {
+        id: 'conflict-task-1',
+        title: 'NAS Version',
+        category: 'warm',
+        isDone: false,
+        createdAt: Date.now() - 2000,
+        updatedAt: Date.now() - 500,
+        isDeleted: false,
+      },
     ],
     notes: [],
     lastModifiedAt: Date.now() - 500,
@@ -140,9 +193,33 @@ export const sampleNasStore = {
  * Pending change types for testing
  */
 export const samplePendingChanges = [
-  { id: 'pc-1', table: 'tasks' as const, recordId: 'task-1', operation: 'create' as const, timestamp: Date.now() - 5000 },
-  { id: 'pc-2', table: 'tasks' as const, recordId: 'task-2', operation: 'update' as const, timestamp: Date.now() - 3000 },
-  { id: 'pc-3', table: 'tasks' as const, recordId: 'task-3', operation: 'delete' as const, timestamp: Date.now() - 1000 },
+  {
+    id: 'pc-1',
+    table: 'tasks' as const,
+    recordId: 'task-1',
+    operation: 'create' as const,
+    timestamp: Date.now() - 5000,
+  },
+  {
+    id: 'pc-2',
+    table: 'tasks' as const,
+    recordId: 'task-2',
+    operation: 'update' as const,
+    timestamp: Date.now() - 3000,
+  },
+  {
+    id: 'pc-3',
+    table: 'tasks' as const,
+    recordId: 'task-3',
+    operation: 'delete' as const,
+    timestamp: Date.now() - 1000,
+  },
   { id: 'pc-4', table: 'notes' as const, recordId: 'note-1', operation: 'create' as const, timestamp: Date.now() },
-  { id: 'pc-5', table: 'project_notes' as const, recordId: 'pn-1', operation: 'update' as const, timestamp: Date.now() },
+  {
+    id: 'pc-5',
+    table: 'project_notes' as const,
+    recordId: 'pn-1',
+    operation: 'update' as const,
+    timestamp: Date.now(),
+  },
 ]

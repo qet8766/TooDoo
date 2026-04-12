@@ -64,8 +64,7 @@ app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
 app.commandLine.appendSwitch('disable-http-cache')
 
 // Only use dev server URL if explicitly set by Vite (not a fallback)
-const devServerUrl =
-  process.env.VITE_DEV_SERVER_URL || process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL || undefined
+const devServerUrl = process.env.VITE_DEV_SERVER_URL || process.env.MAIN_WINDOW_VITE_DEV_SERVER_URL || undefined
 
 const indexHtml = path.join(app.getAppPath(), 'dist', 'index.html')
 
@@ -74,10 +73,14 @@ const manageShortcuts = (mode: 'register' | 'unregister') => {
     if (mode === 'register') {
       if (shortcut.category === null) {
         // Notetank shortcut - opens note editor
-        registerShortcut(shortcut.id, () => { createNoteEditorWindow() })
+        registerShortcut(shortcut.id, () => {
+          createNoteEditorWindow()
+        })
       } else {
         // Task shortcuts - open quick add
-        registerShortcut(shortcut.id, () => { createQuickAddWindow(shortcut.category) })
+        registerShortcut(shortcut.id, () => {
+          createQuickAddWindow(shortcut.category)
+        })
       }
     } else {
       unregisterShortcut(shortcut.id)
@@ -160,14 +163,20 @@ app.on('before-quit', () => {
 handleSimple(IPC.TASKS_LIST, getTasks)
 handleWithBroadcast(IPC.TASKS_ADD, addTask)
 handleWithBroadcast(IPC.TASKS_UPDATE, updateTask)
-handleWithBroadcast(IPC.TASKS_DELETE, async (id: string) => { await deleteTask(id); return { id } })
+handleWithBroadcast(IPC.TASKS_DELETE, async (id: string) => {
+  await deleteTask(id)
+  return { id }
+})
 handleWithBroadcast(IPC.TASKS_REORDER, async (p: { taskId: string; targetIndex: number }) => {
   const success = await reorderTask(p.taskId, p.targetIndex)
   return { success }
 })
 handleWithBroadcast(IPC.TASKS_NOTE_ADD, addProjectNote)
 handleWithBroadcast(IPC.TASKS_NOTE_UPDATE, updateProjectNote)
-handleWithBroadcast(IPC.TASKS_NOTE_DELETE, async (id: string) => { await deleteProjectNote(id); return { id } })
+handleWithBroadcast(IPC.TASKS_NOTE_DELETE, async (id: string) => {
+  await deleteProjectNote(id)
+  return { id }
+})
 
 ipcMain.on(IPC.QUICK_ADD_OPEN, (_event: IpcMainEvent, category: string) => {
   createQuickAddWindow(category)
@@ -177,7 +186,10 @@ ipcMain.on(IPC.QUICK_ADD_OPEN, (_event: IpcMainEvent, category: string) => {
 handleSimple(IPC.NOTES_LIST, getNotes)
 handleWithNotesBroadcast(IPC.NOTES_ADD, addNote)
 handleWithNotesBroadcast(IPC.NOTES_UPDATE, updateNote)
-handleWithNotesBroadcast(IPC.NOTES_DELETE, async (id: string) => { await deleteNote(id); return { id } })
+handleWithNotesBroadcast(IPC.NOTES_DELETE, async (id: string) => {
+  await deleteNote(id)
+  return { id }
+})
 
 ipcMain.on(IPC.NOTE_EDITOR_OPEN, (_event: IpcMainEvent, noteId?: string) => {
   createNoteEditorWindow(noteId)
@@ -286,7 +298,9 @@ ipcMain.on(IPC.WINDOW_RESIZE, (_event: IpcMainEvent, deltaWidth: number, deltaHe
 
   // Only resize if there's actual change
   if (newWidth !== bounds.width || newHeight !== bounds.height) {
-    console.log(`[Resize] delta: (${deltaWidth}, ${deltaHeight}), bounds: ${bounds.width}x${bounds.height} → ${newWidth}x${newHeight}`)
+    console.log(
+      `[Resize] delta: (${deltaWidth}, ${deltaHeight}), bounds: ${bounds.width}x${bounds.height} → ${newWidth}x${newHeight}`,
+    )
     resizeWindow(win, newWidth, newHeight)
 
     // Update baseWidth if calendar is open (so closing calendar uses correct base)

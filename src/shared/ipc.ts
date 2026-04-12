@@ -35,8 +35,8 @@ export type TaskCreatePayload = {
   category: TaskCategory
   isDone?: boolean
   // Calendar scheduling fields
-  scheduledDate?: number      // Unix timestamp for scheduled date
-  scheduledTime?: string      // "HH:MM" format, optional
+  scheduledDate?: number // Unix timestamp for scheduled date
+  scheduledTime?: string // "HH:MM" format, optional
 }
 
 export type TaskUpdatePayload = {

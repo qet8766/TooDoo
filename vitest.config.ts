@@ -10,9 +10,7 @@ export default defineConfig({
     environment: 'node',
 
     // Include patterns - only main process unit tests
-    include: [
-      'tests/main/**/*.test.ts',
-    ],
+    include: ['tests/main/**/*.test.ts'],
 
     // Exclude patterns
     exclude: [
@@ -31,14 +29,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      exclude: [
-        'node_modules',
-        'dist',
-        'dist-electron',
-        'tests',
-        '**/*.d.ts',
-        '**/*.config.*',
-      ],
+      exclude: ['node_modules', 'dist', 'dist-electron', 'tests', '**/*.d.ts', '**/*.config.*'],
     },
 
     // Setup files

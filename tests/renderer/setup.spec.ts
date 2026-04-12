@@ -8,12 +8,14 @@ import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
 // Custom mock for setup page with validation control
-const createSetupMock = (options: {
-  pathValid?: boolean
-  pathError?: string
-  saveSuccess?: boolean
-  saveError?: string
-} = {}) => {
+const createSetupMock = (
+  options: {
+    pathValid?: boolean
+    pathError?: string
+    saveSuccess?: boolean
+    saveError?: string
+  } = {},
+) => {
   const { pathValid = true, pathError, saveSuccess = true, saveError } = options
 
   return `

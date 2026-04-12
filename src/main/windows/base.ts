@@ -17,14 +17,23 @@ export type WindowConfig = {
 
 let rendererTarget: { devServerUrl?: string; indexHtml: string } | null = null
 
-export const configureRendererTarget = (target: typeof rendererTarget) => { rendererTarget = target }
+export const configureRendererTarget = (target: typeof rendererTarget) => {
+  rendererTarget = target
+}
 export const getPreloadPath = () => path.join(app.getAppPath(), 'dist-electron', 'preload.cjs')
 
 export const createSingletonWindowManager = () => {
   let win: BrowserWindowType | null = null
   return {
     get: () => win,
-    create: (factory: () => BrowserWindowType) => { if (win) return win; win = factory(); win.on('closed', () => { win = null }); return win },
+    create: (factory: () => BrowserWindowType) => {
+      if (win) return win
+      win = factory()
+      win.on('closed', () => {
+        win = null
+      })
+      return win
+    },
     close: () => win?.close(),
   }
 }
@@ -46,7 +55,10 @@ const computePosition = (config: WindowConfig): { x?: number; y?: number } => {
   if (config.position === 'cursor') {
     const cursor = screen.getCursorScreenPoint()
     const { x, y, width: w, height: h } = screen.getDisplayNearestPoint(cursor).workArea
-    return { x: Math.max(x, Math.min(cursor.x + 12, x + w - config.width - 8)), y: Math.max(y, Math.min(cursor.y + 12, y + h - config.height - 8)) }
+    return {
+      x: Math.max(x, Math.min(cursor.x + 12, x + w - config.width - 8)),
+      y: Math.max(y, Math.min(cursor.y + 12, y + h - config.height - 8)),
+    }
   }
 
   const { width: sw } = screen.getPrimaryDisplay().workAreaSize
@@ -54,14 +66,34 @@ const computePosition = (config: WindowConfig): { x?: number; y?: number } => {
 }
 
 const typeOptions: Record<WindowType, Partial<BrowserWindowConstructorOptions>> = {
-  overlay: { frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true, focusable: true, hasShadow: false, show: true },
-  popup: { frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true, focusable: true, hasShadow: true, show: false },
+  overlay: {
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: true,
+    hasShadow: false,
+    show: true,
+  },
+  popup: {
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: true,
+    hasShadow: true,
+    show: false,
+  },
 }
 
 export const createWindow = (config: WindowConfig): BrowserWindowType => {
   const win = new BrowserWindow({
-    width: config.width, height: config.height, minWidth: config.minWidth, minHeight: config.minHeight,
-    title: config.title || 'TooDoo', autoHideMenuBar: true,
+    width: config.width,
+    height: config.height,
+    minWidth: config.minWidth,
+    minHeight: config.minHeight,
+    title: config.title || 'TooDoo',
+    autoHideMenuBar: true,
     webPreferences: { preload: getPreloadPath(), contextIsolation: true, nodeIntegration: false },
     resizable: config.resizable ?? config.type === 'overlay',
     ...typeOptions[config.type],
@@ -70,7 +102,11 @@ export const createWindow = (config: WindowConfig): BrowserWindowType => {
 
   win.setAlwaysOnTop(true, 'screen-saver')
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-  if (config.type === 'popup') win.on('ready-to-show', () => { win.show(); win.focus() })
+  if (config.type === 'popup')
+    win.on('ready-to-show', () => {
+      win.show()
+      win.focus()
+    })
 
   loadRoute(win, config.route)
   return win

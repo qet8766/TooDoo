@@ -9,32 +9,37 @@ export function useDeleteArm(timeoutMs = DEFAULT_TIMEOUT_MS) {
   // Cleanup all timers on unmount
   useEffect(() => {
     const timers = deleteTimers.current
-    return () => { timers.forEach(t => clearTimeout(t)) }
+    return () => {
+      timers.forEach((t) => clearTimeout(t))
+    }
   }, [])
 
-  const armForDelete = useCallback((id: string) => {
-    const existing = deleteTimers.current.get(id)
-    if (existing) clearTimeout(existing)
+  const armForDelete = useCallback(
+    (id: string) => {
+      const existing = deleteTimers.current.get(id)
+      if (existing) clearTimeout(existing)
 
-    setArmedForDelete(prev => new Set(prev).add(id))
+      setArmedForDelete((prev) => new Set(prev).add(id))
 
-    const timer = setTimeout(() => {
-      setArmedForDelete(prev => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
-      deleteTimers.current.delete(id)
-    }, timeoutMs)
+      const timer = setTimeout(() => {
+        setArmedForDelete((prev) => {
+          const next = new Set(prev)
+          next.delete(id)
+          return next
+        })
+        deleteTimers.current.delete(id)
+      }, timeoutMs)
 
-    deleteTimers.current.set(id, timer)
-  }, [timeoutMs])
+      deleteTimers.current.set(id, timer)
+    },
+    [timeoutMs],
+  )
 
   const disarmDelete = useCallback((id: string) => {
     const timer = deleteTimers.current.get(id)
     if (timer) clearTimeout(timer)
     deleteTimers.current.delete(id)
-    setArmedForDelete(prev => {
+    setArmedForDelete((prev) => {
       const next = new Set(prev)
       next.delete(id)
       return next
