@@ -346,6 +346,14 @@ export const deleteTask = async (id: string): Promise<void> => {
 
 // --- Project Notes ---
 
+const findTaskByProjectNote = (noteId: string): { task: Task; note: ProjectNote } | null => {
+  for (const task of tasksCache) {
+    const note = task.projectNotes?.find((n) => n.id === noteId)
+    if (note) return { task, note }
+  }
+  return null
+}
+
 export const addProjectNote = async (p: {
   id: string
   taskId: string
@@ -390,65 +398,48 @@ export const updateProjectNote = async (p: {
   const err = validateProjectNote(p)
   if (err) return { error: err }
 
-  let foundNote: ProjectNote | null = null
-  let taskId: string | null = null
-  for (const task of tasksCache) {
-    const note = task.projectNotes?.find((n) => n.id === p.id)
-    if (note) {
-      foundNote = note
-      taskId = task.id
-      break
-    }
-  }
-  if (!foundNote || !taskId) return null
+  const found = findTaskByProjectNote(p.id)
+  if (!found) return null
 
   const now = Date.now()
   const updated: ProjectNote = {
-    ...foundNote,
+    ...found.note,
     content: p.content.trim(),
     updatedAt: now,
   }
 
   // Update task
-  const task = tasksCache.find((t) => t.id === taskId)!
   const updatedTask: Task = {
-    ...task,
-    projectNotes: (task.projectNotes ?? []).map((n) => (n.id === p.id ? updated : n)),
+    ...found.task,
+    projectNotes: (found.task.projectNotes ?? []).map((n) => (n.id === p.id ? updated : n)),
     updatedAt: now,
   }
 
   // Update cache
-  tasksCache = tasksCache.map((t) => (t.id === taskId ? updatedTask : t))
+  tasksCache = tasksCache.map((t) => (t.id === found.task.id ? updatedTask : t))
 
   // Persist to Firestore
-  await setDoc(doc(getTasksCollection(), taskId), updatedTask)
+  await setDoc(doc(getTasksCollection(), found.task.id), updatedTask)
 
   return updated
 }
 
 export const deleteProjectNote = async (id: string): Promise<void> => {
-  let taskId: string | null = null
-  for (const task of tasksCache) {
-    if (task.projectNotes?.find((n) => n.id === id)) {
-      taskId = task.id
-      break
-    }
-  }
-  if (!taskId) return
+  const found = findTaskByProjectNote(id)
+  if (!found) return
 
-  const task = tasksCache.find((t) => t.id === taskId)!
   const now = Date.now()
   const updatedTask: Task = {
-    ...task,
-    projectNotes: task.projectNotes?.filter((n) => n.id !== id),
+    ...found.task,
+    projectNotes: found.task.projectNotes?.filter((n) => n.id !== id),
     updatedAt: now,
   }
 
   // Update cache
-  tasksCache = tasksCache.map((t) => (t.id === taskId ? updatedTask : t))
+  tasksCache = tasksCache.map((t) => (t.id === found.task.id ? updatedTask : t))
 
   // Persist to Firestore
-  await setDoc(doc(getTasksCollection(), taskId), updatedTask)
+  await setDoc(doc(getTasksCollection(), found.task.id), updatedTask)
 }
 
 // --- Notetank Notes ---

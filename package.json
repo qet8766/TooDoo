@@ -78,7 +78,6 @@
     "firebase": "^12.8.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-grab": "^0.0.98",
     "react-router-dom": "^7.1.1"
   },
   "devDependencies": {

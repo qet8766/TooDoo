@@ -23,9 +23,6 @@ const onTasksChanged = (callback: () => void): (() => void) => {
   }
 }
 
-// Toggle overlay
-const toggleOverlay = (isActive: boolean) => ipcRenderer.send(IPC.TOGGLE_OVERLAY, isActive)
-
 // Open quick-add popup for a category
 const openQuickAdd = (category: string) => ipcRenderer.send(IPC.QUICK_ADD_OPEN, category)
 
@@ -76,7 +73,6 @@ const api = {
   setMinimized,
   setCalendarOpen,
   resizeWindow,
-  toggleOverlay,
   openQuickAdd,
 }
 

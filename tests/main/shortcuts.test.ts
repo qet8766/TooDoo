@@ -42,28 +42,28 @@ describe('Shortcut Definitions', () => {
   })
 
   describe('Task shortcuts', () => {
-    it('should have CapsLock for scorching tasks', () => {
-      expect(SHORTCUTS['toodoo:scorching'].accelerator).toBe('CapsLock')
+    it('should have Alt+Shift+Q for scorching tasks', () => {
+      expect(SHORTCUTS['toodoo:scorching'].accelerator).toBe('Alt+Shift+Q')
       expect(SHORTCUTS['toodoo:scorching'].category).toBe('scorching')
     })
 
-    it('should have Alt+Shift+H for hot tasks', () => {
-      expect(SHORTCUTS['toodoo:hot'].accelerator).toBe('Alt+Shift+H')
+    it('should have Alt+Shift+W for hot tasks', () => {
+      expect(SHORTCUTS['toodoo:hot'].accelerator).toBe('Alt+Shift+W')
       expect(SHORTCUTS['toodoo:hot'].category).toBe('hot')
     })
 
-    it('should have Alt+Shift+W for warm tasks', () => {
-      expect(SHORTCUTS['toodoo:warm'].accelerator).toBe('Alt+Shift+W')
+    it('should have Alt+Shift+E for warm tasks', () => {
+      expect(SHORTCUTS['toodoo:warm'].accelerator).toBe('Alt+Shift+E')
       expect(SHORTCUTS['toodoo:warm'].category).toBe('warm')
     })
 
-    it('should have Alt+Shift+C for cool tasks', () => {
-      expect(SHORTCUTS['toodoo:cool'].accelerator).toBe('Alt+Shift+C')
+    it('should have Alt+Shift+R for cool tasks', () => {
+      expect(SHORTCUTS['toodoo:cool'].accelerator).toBe('Alt+Shift+R')
       expect(SHORTCUTS['toodoo:cool'].category).toBe('cool')
     })
 
-    it('should have Alt+Shift+P for project tasks', () => {
-      expect(SHORTCUTS['toodoo:project'].accelerator).toBe('Alt+Shift+P')
+    it('should have Alt+Shift+T for project tasks', () => {
+      expect(SHORTCUTS['toodoo:project'].accelerator).toBe('Alt+Shift+T')
       expect(SHORTCUTS['toodoo:project'].category).toBe('project')
     })
   })
@@ -133,14 +133,8 @@ describe('Accelerator Format', () => {
     }
   })
 
-  it('CapsLock should be a standalone key (no modifiers)', () => {
-    const scorching = SHORTCUTS['toodoo:scorching']
-    expect(scorching.accelerator).toBe('CapsLock')
-    expect(scorching.accelerator.includes('+')).toBe(false)
-  })
-
-  it('task shortcuts (except scorching) should use Alt+Shift modifier', () => {
-    const taskShortcuts = ['toodoo:hot', 'toodoo:warm', 'toodoo:cool', 'toodoo:project'] as const
+  it('all task shortcuts should use Alt+Shift modifier', () => {
+    const taskShortcuts = ['toodoo:scorching', 'toodoo:hot', 'toodoo:warm', 'toodoo:cool', 'toodoo:project'] as const
 
     for (const id of taskShortcuts) {
       expect(SHORTCUTS[id].accelerator).toMatch(/^Alt\+Shift\+[A-Z]$/)

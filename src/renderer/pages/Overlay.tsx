@@ -2,10 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type
 import type { ProjectNote, Task, TaskCategory } from '@shared/types'
 import { CATEGORIES, NORMAL_CATEGORIES } from '@shared/categories'
 import { CalendarPanel } from '../components/Calendar'
+import { useFontSize } from '../hooks/useFontSize'
+import { useDeleteArm } from '../hooks/useDeleteArm'
 
-const FONT_SIZE_KEY = 'toodoo-font-size'
-const DEFAULT_FONT_SIZE = 14
-const DELETE_ARM_TIMEOUT_MS = 2000
 const MINIMIZE_DURATION_MS = 60 * 60 * 1000 // 1 hour
 const MINIMIZE_CHECK_INTERVAL_MS = 60 * 1000 // check every minute
 
@@ -16,12 +15,8 @@ const TooDooOverlay = () => {
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null)
   const [noteModal, setNoteModal] = useState<{ taskId: string | null; text: string }>({ taskId: null, text: '' })
   const [editingNote, setEditingNote] = useState<{ noteId: string; content: string } | null>(null)
-  const [armedForDelete, setArmedForDelete] = useState<Set<string>>(new Set())
-  const deleteTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-  const [fontSize, setFontSize] = useState(() => {
-    const saved = localStorage.getItem(FONT_SIZE_KEY)
-    return saved ? parseInt(saved, 10) : DEFAULT_FONT_SIZE
-  })
+  const { fontSize, handleFontSizeChange } = useFontSize('toodoo-font-size')
+  const { armedForDelete, armForDelete, disarmDelete, deleteTimers } = useDeleteArm()
   const [isMinimized, setIsMinimized] = useState(false)
   const [minimizedAt, setMinimizedAt] = useState<number | null>(null)
   const [isCalendarOpen, setIsCalendarOpen] = useState(false)
@@ -36,12 +31,6 @@ const TooDooOverlay = () => {
       window.toodoo.setCalendarOpen(isCalendarOpen)
     }
   }, [isCalendarOpen])
-
-  const handleFontSizeChange = (delta: number) => {
-    const newSize = Math.max(10, Math.min(24, fontSize + delta))
-    setFontSize(newSize)
-    localStorage.setItem(FONT_SIZE_KEY, String(newSize))
-  }
 
   // Focus mode: minimize/expand handlers
   const handleMinimize = useCallback(() => {
@@ -70,27 +59,15 @@ const TooDooOverlay = () => {
           existingIds.add(note.id)
         }
       }
-      // Clear timers for deleted items
-      for (const [id, timer] of deleteTimers.current) {
-        if (!existingIds.has(id)) {
-          clearTimeout(timer)
-          deleteTimers.current.delete(id)
-        }
-      }
-      // Update armed state for deleted items
-      setArmedForDelete(prev => {
-        const next = new Set<string>()
-        for (const id of prev) {
-          if (existingIds.has(id)) next.add(id)
-        }
-        return next.size !== prev.size ? next : prev
-      })
+      // Disarm deleted items
+      const staleIds = [...deleteTimers.current.keys()].filter(id => !existingIds.has(id))
+      staleIds.forEach(disarmDelete)
     } catch (error) {
       console.error('Failed to fetch tasks:', error)
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [disarmDelete])
 
   useEffect(() => {
     // Subscribe to task changes and fetch initial data
@@ -98,12 +75,6 @@ const TooDooOverlay = () => {
     fetchTasks()
     return unsubscribe
   }, [fetchTasks])
-
-  // Cleanup delete timers on unmount
-  useEffect(() => {
-    const timers = deleteTimers.current
-    return () => { timers.forEach(t => clearTimeout(t)) }
-  }, [])
 
   // Focus mode: auto-expand after 1 hour
   useEffect(() => {
@@ -118,37 +89,6 @@ const TooDooOverlay = () => {
     const interval = setInterval(checkExpiry, MINIMIZE_CHECK_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [isMinimized, minimizedAt, handleExpand])
-
-  const armForDelete = useCallback((id: string) => {
-    // Clear existing timer if any
-    const existing = deleteTimers.current.get(id)
-    if (existing) clearTimeout(existing)
-
-    setArmedForDelete(prev => new Set(prev).add(id))
-
-    // Auto-disarm after timeout
-    const timer = setTimeout(() => {
-      setArmedForDelete(prev => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
-      deleteTimers.current.delete(id)
-    }, DELETE_ARM_TIMEOUT_MS)
-
-    deleteTimers.current.set(id, timer)
-  }, [])
-
-  const disarmDelete = useCallback((id: string) => {
-    const timer = deleteTimers.current.get(id)
-    if (timer) clearTimeout(timer)
-    deleteTimers.current.delete(id)
-    setArmedForDelete(prev => {
-      const next = new Set(prev)
-      next.delete(id)
-      return next
-    })
-  }, [])
 
   const [dropTarget, setDropTarget] = useState<{ category: TaskCategory; index: number } | null>(null)
 

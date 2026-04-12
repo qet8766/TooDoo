@@ -19,7 +19,6 @@ export const IPC = {
   NOTES_DELETE: 'notes:delete',
   NOTES_CHANGED: 'notes:changed',
   // Window control
-  TOGGLE_OVERLAY: 'toggle-overlay',
   QUICK_ADD_OPEN: 'quick-add:open',
   NOTE_EDITOR_OPEN: 'note-editor:open',
   NOTE_EDITOR_CLOSE: 'note-editor:close',

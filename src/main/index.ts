@@ -23,7 +23,6 @@ import { IPC } from '@shared/ipc'
 import {
   configureRendererTarget,
   createTooDooOverlay,
-  closeTooDooOverlay,
   getTooDooOverlay,
   createQuickAddWindow,
   createNoteEditorWindow,
@@ -155,15 +154,6 @@ app.on('before-quit', () => {
   stopListeners()
   stopCategoryRecalculation()
   manageShortcuts('unregister')
-})
-
-// Toggle overlay visibility
-ipcMain.on(IPC.TOGGLE_OVERLAY, (_event: IpcMainEvent, isActive: boolean) => {
-  if (isActive) {
-    createTooDooOverlay()
-  } else {
-    closeTooDooOverlay()
-  }
 })
 
 // --- Task Handlers ---

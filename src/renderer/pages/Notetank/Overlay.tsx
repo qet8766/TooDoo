@@ -1,27 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Note } from '@shared/types'
-
-const FONT_SIZE_KEY = 'notetank-font-size'
-const DEFAULT_FONT_SIZE = 14
-const DELETE_ARM_TIMEOUT_MS = 2000
+import { useFontSize } from '../../hooks/useFontSize'
+import { useDeleteArm } from '../../hooks/useDeleteArm'
 
 const NotetankOverlay = () => {
   const [notes, setNotes] = useState<Note[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(true)
-  const [armedForDelete, setArmedForDelete] = useState<Set<string>>(new Set())
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set())
-  const deleteTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-  const [fontSize, setFontSize] = useState(() => {
-    const saved = localStorage.getItem(FONT_SIZE_KEY)
-    return saved ? parseInt(saved, 10) : DEFAULT_FONT_SIZE
-  })
-
-  const handleFontSizeChange = (delta: number) => {
-    const newSize = Math.max(10, Math.min(24, fontSize + delta))
-    setFontSize(newSize)
-    localStorage.setItem(FONT_SIZE_KEY, String(newSize))
-  }
+  const { fontSize, handleFontSizeChange } = useFontSize('notetank-font-size')
+  const { armedForDelete, armForDelete, disarmDelete } = useDeleteArm()
 
   const fetchNotes = useCallback(async () => {
     setIsLoading(true)
@@ -40,41 +28,6 @@ const NotetankOverlay = () => {
     fetchNotes()
     return unsubscribe
   }, [fetchNotes])
-
-  // Cleanup delete timers on unmount
-  useEffect(() => {
-    const timers = deleteTimers.current
-    return () => { timers.forEach(t => clearTimeout(t)) }
-  }, [])
-
-  const armForDelete = useCallback((id: string) => {
-    const existing = deleteTimers.current.get(id)
-    if (existing) clearTimeout(existing)
-
-    setArmedForDelete(prev => new Set(prev).add(id))
-
-    const timer = setTimeout(() => {
-      setArmedForDelete(prev => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
-      deleteTimers.current.delete(id)
-    }, DELETE_ARM_TIMEOUT_MS)
-
-    deleteTimers.current.set(id, timer)
-  }, [])
-
-  const disarmDelete = useCallback((id: string) => {
-    const timer = deleteTimers.current.get(id)
-    if (timer) clearTimeout(timer)
-    deleteTimers.current.delete(id)
-    setArmedForDelete(prev => {
-      const next = new Set(prev)
-      next.delete(id)
-      return next
-    })
-  }, [])
 
   const filteredNotes = useMemo(() => {
     if (!searchQuery.trim()) return notes
