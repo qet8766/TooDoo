@@ -1,92 +1,69 @@
-import { doc, getDocs, setDoc, deleteDoc, onSnapshot, type Unsubscribe } from 'firebase/firestore'
+import fs from 'node:fs'
+import path from 'node:path'
 import type { Note, ProjectNote, Task, TaskCategory } from '@shared/types'
 import { ALL_CATEGORIES } from '@shared/categories'
 import { calculateEffectiveCategory, getTasksNeedingUpdate } from '@shared/category-calculator'
-import { initFirebase, getTasksCollection, getNotesCollection } from './firebase'
-import { broadcastTaskChange, broadcastNotesChange } from '../broadcast'
+import { app } from '../electron'
 
 // --- Constants ---
 
 const MAX_PAYLOAD_SIZE = 100_000
 
 // --- In-Memory Cache ---
-// Firestore listeners populate these caches; CRUD operations update both cache and Firestore
 
 let tasksCache: Task[] = []
 let notesCache: Note[] = []
 
-// --- Firestore Listeners ---
+// --- Local File Persistence ---
 
-let tasksUnsubscribe: Unsubscribe | null = null
-let notesUnsubscribe: Unsubscribe | null = null
+let tasksPath = ''
+let notesPath = ''
 
-/**
- * Start real-time listeners for tasks and notes collections.
- * Updates are broadcast to all renderer windows.
- */
-const startListeners = () => {
-  // Tasks listener
-  tasksUnsubscribe = onSnapshot(
-    getTasksCollection(),
-    (snapshot) => {
-      tasksCache = snapshot.docs.map((doc) => doc.data() as Task)
-      console.log(`Firestore tasks updated: ${tasksCache.length} tasks`)
-      broadcastTaskChange()
-    },
-    (error) => {
-      console.error('Firestore tasks listener error:', error)
-    },
-  )
-
-  // Notes listener
-  notesUnsubscribe = onSnapshot(
-    getNotesCollection(),
-    (snapshot) => {
-      notesCache = snapshot.docs.map((doc) => doc.data() as Note)
-      console.log(`Firestore notes updated: ${notesCache.length} notes`)
-      broadcastNotesChange()
-    },
-    (error) => {
-      console.error('Firestore notes listener error:', error)
-    },
-  )
+/** Atomically write tasks cache to disk (write tmp + rename). */
+const persistTasks = (): void => {
+  const tmp = tasksPath + '.tmp'
+  fs.writeFileSync(tmp, JSON.stringify(tasksCache, null, 2))
+  fs.renameSync(tmp, tasksPath)
 }
 
-/**
- * Stop all Firestore listeners. Called on app shutdown.
- */
-export const stopListeners = () => {
-  if (tasksUnsubscribe) {
-    tasksUnsubscribe()
-    tasksUnsubscribe = null
-  }
-  if (notesUnsubscribe) {
-    notesUnsubscribe()
-    notesUnsubscribe = null
-  }
+/** Atomically write notes cache to disk (write tmp + rename). */
+const persistNotes = (): void => {
+  const tmp = notesPath + '.tmp'
+  fs.writeFileSync(tmp, JSON.stringify(notesCache, null, 2))
+  fs.renameSync(tmp, notesPath)
 }
 
 // --- Database Initialization ---
 
 /**
- * Initialize the database: connect to Firebase, load initial data, start listeners.
+ * Initialize the database: load tasks and notes from local JSON files.
  */
 export const initDatabase = async (): Promise<void> => {
-  await initFirebase()
+  const dataDir = path.join(app.getPath('userData'), 'data')
+  fs.mkdirSync(dataDir, { recursive: true })
 
-  // Load initial data
-  const [tasksSnapshot, notesSnapshot] = await Promise.all([
-    getDocs(getTasksCollection()),
-    getDocs(getNotesCollection()),
-  ])
+  tasksPath = path.join(dataDir, 'tasks.json')
+  notesPath = path.join(dataDir, 'notes.json')
 
-  tasksCache = tasksSnapshot.docs.map((doc) => doc.data() as Task)
-  notesCache = notesSnapshot.docs.map((doc) => doc.data() as Note)
+  try {
+    if (fs.existsSync(tasksPath)) {
+      tasksCache = JSON.parse(fs.readFileSync(tasksPath, 'utf-8'))
+    }
+  } catch (err) {
+    console.error('Failed to load tasks:', err)
+    tasksCache = []
+  }
+
+  try {
+    if (fs.existsSync(notesPath)) {
+      notesCache = JSON.parse(fs.readFileSync(notesPath, 'utf-8'))
+    }
+  } catch (err) {
+    console.error('Failed to load notes:', err)
+    notesCache = []
+  }
 
   console.log(`Database initialized: ${tasksCache.length} tasks, ${notesCache.length} notes`)
-
-  // Start real-time listeners
-  startListeners()
 }
 
 // --- Validation ---
@@ -173,14 +150,7 @@ export const addTask = async (p: {
       .map((t) => (t.category === task.category ? { ...t, sortOrder: (t.sortOrder ?? 0) + 1 } : t)),
   ]
 
-  // Persist to Firestore (also updates shifted tasks)
-  const tasksCollection = getTasksCollection()
-  await setDoc(doc(tasksCollection, task.id), task)
-
-  // Update shifted tasks in Firestore
-  for (const t of tasksCache.filter((t) => t.category === task.category && t.id !== task.id)) {
-    await setDoc(doc(tasksCollection, t.id), t)
-  }
+  persistTasks()
 
   return task
 }
@@ -264,16 +234,7 @@ export const updateTask = async (p: {
     tasksCache = tasksCache.map((t) => (t.id === p.id ? updated : t))
   }
 
-  // Persist to Firestore
-  const tasksCollection = getTasksCollection()
-  await setDoc(doc(tasksCollection, updated.id), updated)
-
-  // Update shifted tasks if category changed
-  if (categoryChanged) {
-    for (const t of tasksCache.filter((t) => t.category === effectiveCategory && t.id !== updated.id)) {
-      await setDoc(doc(tasksCollection, t.id), t)
-    }
-  }
+  persistTasks()
 
   return updated
 }
@@ -296,14 +257,6 @@ export const reorderTask = async (taskId: string, targetIndex: number): Promise<
 
   // Update sortOrder for all tasks in category
   const now = Date.now()
-  const updatedTasks: Task[] = []
-
-  categoryTasks.forEach((t, idx) => {
-    if (t.sortOrder !== idx) {
-      const updated = { ...t, sortOrder: idx, updatedAt: now }
-      updatedTasks.push(updated)
-    }
-  })
 
   // Update cache
   tasksCache = tasksCache.map((t) => {
@@ -313,18 +266,14 @@ export const reorderTask = async (taskId: string, targetIndex: number): Promise<
     return { ...t, sortOrder: idx, updatedAt: now }
   })
 
-  // Persist to Firestore
-  const tasksCollection = getTasksCollection()
-  for (const t of updatedTasks) {
-    await setDoc(doc(tasksCollection, t.id), t)
-  }
+  persistTasks()
 
   return true
 }
 
 export const deleteTask = async (id: string): Promise<void> => {
   tasksCache = tasksCache.filter((t) => t.id !== id)
-  await deleteDoc(doc(getTasksCollection(), id))
+  persistTasks()
 }
 
 // --- Project Notes ---
@@ -368,8 +317,7 @@ export const addProjectNote = async (p: {
   // Update cache
   tasksCache = tasksCache.map((t) => (t.id === p.taskId ? updatedTask : t))
 
-  // Persist to Firestore
-  await setDoc(doc(getTasksCollection(), p.taskId), updatedTask)
+  persistTasks()
 
   return note
 }
@@ -401,8 +349,7 @@ export const updateProjectNote = async (p: {
   // Update cache
   tasksCache = tasksCache.map((t) => (t.id === found.task.id ? updatedTask : t))
 
-  // Persist to Firestore
-  await setDoc(doc(getTasksCollection(), found.task.id), updatedTask)
+  persistTasks()
 
   return updated
 }
@@ -421,8 +368,7 @@ export const deleteProjectNote = async (id: string): Promise<void> => {
   // Update cache
   tasksCache = tasksCache.map((t) => (t.id === found.task.id ? updatedTask : t))
 
-  // Persist to Firestore
-  await setDoc(doc(getTasksCollection(), found.task.id), updatedTask)
+  persistTasks()
 }
 
 // --- Notetank Notes ---
@@ -448,8 +394,7 @@ export const addNote = async (p: { id: string; title: string; content: string })
   // Update cache
   notesCache = [note, ...notesCache.filter((n) => n.id !== note.id)]
 
-  // Persist to Firestore
-  await setDoc(doc(getNotesCollection(), note.id), note)
+  persistNotes()
 
   return note
 }
@@ -475,15 +420,14 @@ export const updateNote = async (p: {
   // Update cache
   notesCache = notesCache.map((n) => (n.id === p.id ? updated : n))
 
-  // Persist to Firestore
-  await setDoc(doc(getNotesCollection(), p.id), updated)
+  persistNotes()
 
   return updated
 }
 
 export const deleteNote = async (id: string): Promise<void> => {
   notesCache = notesCache.filter((n) => n.id !== id)
-  await deleteDoc(doc(getNotesCollection(), id))
+  persistNotes()
 }
 
 // --- Scheduled Task Category Recalculation ---
@@ -543,14 +487,7 @@ export const recalculateScheduledCategories = async (): Promise<number> => {
     return { ...task, sortOrder: newSortOrder >= 0 ? newSortOrder : task.sortOrder }
   })
 
-  // Persist updated tasks to Firestore
-  const tasksCollection = getTasksCollection()
-  for (const id of updatedIds) {
-    const task = tasksCache.find((t) => t.id === id)
-    if (task) {
-      await setDoc(doc(tasksCollection, id), task)
-    }
-  }
+  persistTasks()
 
   return updatedIds.size
 }

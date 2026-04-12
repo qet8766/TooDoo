@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { SHORTCUTS, type ShortcutId, type ShortcutDefinition } from '@main/shortcuts/definitions'
+import { SHORTCUTS, type ShortcutId } from '@main/shortcuts/definitions'
 
 describe('Shortcut Definitions', () => {
   describe('SHORTCUTS constant', () => {

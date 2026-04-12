@@ -100,17 +100,6 @@ const createNotetankMock = (notes: Note[]) => `
       close: function() { console.log('[Mock] noteEditor.close'); }
     },
     switchView: function(view) { console.log('[Mock] switchView', view); },
-    config: {
-      get: function() { return Promise.resolve({ nasPath: '\\\\\\\\mock\\\\toodoo', machineId: 'mock', lastSyncAt: Date.now() }); },
-      needsSetup: function() { return Promise.resolve(false); }
-    },
-    sync: {
-      getStatus: function() { return Promise.resolve({ isOnline: true, pendingCount: 0, lastSyncAt: Date.now(), circuitBreakerOpen: false, nextRetryAt: null }); }
-    },
-    setup: {
-      browseFolder: function() { return Promise.resolve(null); },
-      complete: function() { return Promise.resolve(); }
-    },
     toggleOverlay: function() {},
     openQuickAdd: function() {}
   };

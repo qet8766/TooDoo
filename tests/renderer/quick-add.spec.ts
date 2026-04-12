@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from '@playwright/test'
-import { injectToodooMock, type Task } from '../mocks'
+import { injectToodooMock } from '../mocks'
 
 test.describe('Quick-Add Popup', () => {
   test.describe('UI Rendering', () => {

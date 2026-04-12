@@ -144,21 +144,6 @@ const createMockScript = (tasks: Task[]) => `
         if (idx > -1) listeners.splice(idx, 1);
       };
     },
-    config: {
-      get: function() { return Promise.resolve({ nasPath: '\\\\\\\\mock\\\\toodoo', machineId: 'mock-machine', lastSyncAt: Date.now() }); },
-      setNasPath: function() { return Promise.resolve({ success: true }); },
-      validatePath: function() { return Promise.resolve({ valid: true }); },
-      needsSetup: function() { return Promise.resolve(false); }
-    },
-    sync: {
-      getStatus: function() { return Promise.resolve({ isOnline: true, pendingCount: 0, lastSyncAt: Date.now(), circuitBreakerOpen: false, nextRetryAt: null }); },
-      trigger: function() { return Promise.resolve(); },
-      resetCircuitBreaker: function() { return Promise.resolve(); }
-    },
-    setup: {
-      browseFolder: function() { return Promise.resolve(null); },
-      complete: function() { return Promise.resolve(); }
-    },
     toggleOverlay: function() {},
     openQuickAdd: function() {},
     switchView: function() {}

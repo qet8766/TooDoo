@@ -2,32 +2,31 @@
  * Database Validation Unit Tests
  *
  * Tests for task/note validation logic. These tests check validation
- * that happens before any Firestore operations.
+ * that happens before any persistence operations.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Mock Firebase Firestore - validation runs before any Firestore calls
-vi.mock('firebase/firestore', () => ({
-  doc: vi.fn(),
-  getDocs: vi.fn(() => Promise.resolve({ docs: [] })),
-  setDoc: vi.fn(() => Promise.resolve()),
-  deleteDoc: vi.fn(() => Promise.resolve()),
-  onSnapshot: vi.fn(() => vi.fn()),
-  getFirestore: vi.fn(),
-  collection: vi.fn(),
-  initializeFirestore: vi.fn(),
+// Mock Node.js fs module — validation runs before any file I/O
+vi.mock('node:fs', () => ({
+  default: {
+    existsSync: vi.fn(() => false),
+    readFileSync: vi.fn(() => '[]'),
+    writeFileSync: vi.fn(),
+    renameSync: vi.fn(),
+    mkdirSync: vi.fn(),
+  },
 }))
 
-// Mock the Firebase init module
-vi.mock('../src/main/db/firebase', () => ({
-  initFirebase: vi.fn(() => Promise.resolve()),
-  getTasksCollection: vi.fn(),
-  getNotesCollection: vi.fn(),
+// Mock Electron app for getPath('userData')
+vi.mock('../../src/main/electron', () => ({
+  app: {
+    getPath: vi.fn(() => '/tmp/toodoo-test'),
+  },
 }))
 
 // Mock broadcast (no-op in tests)
-vi.mock('../src/main/broadcast', () => ({
+vi.mock('../../src/main/broadcast', () => ({
   broadcastTaskChange: vi.fn(),
   broadcastNotesChange: vi.fn(),
 }))

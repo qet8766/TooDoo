@@ -77,7 +77,7 @@ const TooDooOverlay = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [disarmDelete])
+  }, [disarmDelete, deleteTimers])
 
   useEffect(() => {
     // Subscribe to task changes and fetch initial data

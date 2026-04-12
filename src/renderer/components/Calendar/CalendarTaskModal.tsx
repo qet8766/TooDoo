@@ -56,7 +56,7 @@ export const CalendarTaskModal = ({ date, tasks, onClose }: CalendarTaskModalPro
       setTitle('')
       setTime('')
       setTimeout(onClose, 400)
-    } catch (err) {
+    } catch {
       setStatus('Failed to add task')
       setIsSubmitting(false)
     }

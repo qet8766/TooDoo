@@ -10,7 +10,6 @@ import {
   updateTask,
   updateProjectNote,
   reorderTask,
-  stopListeners,
   getNotes,
   addNote,
   updateNote,
@@ -51,7 +50,7 @@ if (!gotTheLock) {
     }
   }, 500)
 } else {
-  app.on('second-instance', (_event: Electron.Event, _commandLine: string[], _workingDirectory: string) => {
+  app.on('second-instance', () => {
     // New instance is starting - quit to let it take over
     console.log('New instance detected. Quitting to let it take over.')
     app.quit()
@@ -124,7 +123,7 @@ const stopCategoryRecalculation = () => {
 const bootstrap = async () => {
   configureRendererTarget({ devServerUrl, indexHtml })
 
-  // Initialize database (connects to Firebase)
+  // Initialize database (loads local JSON files)
   await initDatabase()
 
   // Start scheduled task category recalculation
@@ -146,7 +145,6 @@ app.on('activate', () => {
 
 app.on('window-all-closed', () => {
   manageShortcuts('unregister')
-  stopListeners()
   stopCategoryRecalculation()
   if (process.platform !== 'darwin') {
     app.quit()
@@ -154,7 +152,6 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  stopListeners()
   stopCategoryRecalculation()
   manageShortcuts('unregister')
 })
