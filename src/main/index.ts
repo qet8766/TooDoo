@@ -14,9 +14,7 @@ import {
   addNote,
   updateNote,
   deleteNote,
-  recalculateScheduledCategories,
 } from './db/database'
-import { broadcastTaskChange } from './broadcast'
 import { app, BrowserWindow, ipcMain } from './electron'
 import { IPC } from '@shared/ipc'
 import {
@@ -87,47 +85,11 @@ const manageShortcuts = (mode: 'register' | 'unregister') => {
   }
 }
 
-// --- Scheduled Task Category Recalculation ---
-const CATEGORY_RECALC_INTERVAL_MS = 60_000 // Every 60 seconds
-let categoryRecalcInterval: ReturnType<typeof setInterval> | null = null
-
-const startCategoryRecalculation = () => {
-  if (categoryRecalcInterval) return
-
-  // Run initial recalculation
-  recalculateScheduledCategories().then((initialUpdates) => {
-    if (initialUpdates > 0) {
-      console.log(`Initial category recalculation: updated ${initialUpdates} task(s)`)
-      broadcastTaskChange()
-    }
-  })
-
-  // Set up periodic recalculation
-  categoryRecalcInterval = setInterval(() => {
-    recalculateScheduledCategories().then((updated) => {
-      if (updated > 0) {
-        console.log(`Category recalculation: updated ${updated} task(s)`)
-        broadcastTaskChange()
-      }
-    })
-  }, CATEGORY_RECALC_INTERVAL_MS)
-}
-
-const stopCategoryRecalculation = () => {
-  if (categoryRecalcInterval) {
-    clearInterval(categoryRecalcInterval)
-    categoryRecalcInterval = null
-  }
-}
-
 const bootstrap = async () => {
   configureRendererTarget({ devServerUrl, indexHtml })
 
   // Initialize database (loads local JSON files)
   await initDatabase()
-
-  // Start scheduled task category recalculation
-  startCategoryRecalculation()
 
   // Now show the main overlay and register shortcuts
   createTooDooOverlay()
@@ -145,14 +107,12 @@ app.on('activate', () => {
 
 app.on('window-all-closed', () => {
   manageShortcuts('unregister')
-  stopCategoryRecalculation()
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
 app.on('before-quit', () => {
-  stopCategoryRecalculation()
   manageShortcuts('unregister')
 })
 

@@ -15,7 +15,7 @@ describe('Shortcut Definitions', () => {
         'toodoo:hot',
         'toodoo:warm',
         'toodoo:cool',
-        'toodoo:project',
+        'toodoo:timed',
         'notetank:new',
       ]
 
@@ -62,9 +62,9 @@ describe('Shortcut Definitions', () => {
       expect(SHORTCUTS['toodoo:cool'].category).toBe('cool')
     })
 
-    it('should have Alt+Shift+T for project tasks', () => {
-      expect(SHORTCUTS['toodoo:project'].accelerator).toBe('Alt+Shift+T')
-      expect(SHORTCUTS['toodoo:project'].category).toBe('project')
+    it('should have Alt+Shift+T for timed tasks', () => {
+      expect(SHORTCUTS['toodoo:timed'].accelerator).toBe('Alt+Shift+T')
+      expect(SHORTCUTS['toodoo:timed'].category).toBe('timed')
     })
   })
 
@@ -77,7 +77,7 @@ describe('Shortcut Definitions', () => {
 
   describe('Category mapping', () => {
     it('all task shortcuts should have valid categories', () => {
-      const validCategories = ['scorching', 'hot', 'warm', 'cool', 'project']
+      const validCategories = ['scorching', 'hot', 'warm', 'cool', 'timed']
       const taskShortcuts = Object.values(SHORTCUTS).filter((s) => s.category !== null)
 
       for (const shortcut of taskShortcuts) {
@@ -153,7 +153,7 @@ describe('Accelerator Format', () => {
   })
 
   it('all task shortcuts should use Alt+Shift modifier', () => {
-    const taskShortcuts = ['toodoo:scorching', 'toodoo:hot', 'toodoo:warm', 'toodoo:cool', 'toodoo:project'] as const
+    const taskShortcuts = ['toodoo:scorching', 'toodoo:hot', 'toodoo:warm', 'toodoo:cool', 'toodoo:timed'] as const
 
     for (const id of taskShortcuts) {
       expect(SHORTCUTS[id].accelerator).toMatch(/^Alt\+Shift\+[A-Z]$/)

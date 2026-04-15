@@ -15,8 +15,11 @@ const QuickAdd = () => {
   const category: TaskCategory = isValidCategory(rawCategory) ? rawCategory : 'hot'
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [scheduledDate, setScheduledDate] = useState('')
+  const [scheduledTime, setScheduledTime] = useState('')
   const [status, setStatus] = useState('')
   const formRef = useRef<HTMLFormElement | null>(null)
+  const isTimed = category === 'timed'
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -37,12 +40,22 @@ const QuickAdd = () => {
       return
     }
 
+    // Build scheduled date timestamp if provided
+    let scheduledDateTs: number | undefined
+    if (scheduledDate) {
+      const date = new Date(scheduledDate)
+      date.setHours(0, 0, 0, 0)
+      scheduledDateTs = date.getTime()
+    }
+
     const payload = {
       id: crypto.randomUUID(),
       title: trimmed,
       description: descTrimmed || undefined,
       category,
       isDone: false,
+      scheduledDate: scheduledDateTs,
+      scheduledTime: scheduledTime || undefined,
     }
 
     try {
@@ -98,6 +111,24 @@ const QuickAdd = () => {
           className="no-drag"
           onKeyDown={handleTextareaKeyDown}
         />
+        {isTimed && (
+          <div className="quick-add-schedule">
+            <input
+              type="date"
+              value={scheduledDate}
+              onChange={(e) => setScheduledDate(e.target.value)}
+              className="no-drag"
+              title="Schedule date"
+            />
+            <input
+              type="time"
+              value={scheduledTime}
+              onChange={(e) => setScheduledTime(e.target.value)}
+              className="no-drag"
+              title="Time (optional)"
+            />
+          </div>
+        )}
         <button className="button" type="submit">
           Add {CATEGORIES[category].title}
         </button>

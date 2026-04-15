@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type { Task } from '@shared/types'
+import { CATEGORIES } from '@shared/categories'
 import { getHoliday, formatDateStr } from '@shared/holidays'
 import './Calendar.css'
 
@@ -119,7 +120,7 @@ export const Calendar = ({ year, month, onMonthChange, onDateClick, scheduledTas
               {tasksOnDay.length > 0 && (
                 <div className="task-dots">
                   {tasksOnDay.slice(0, 3).map((task) => (
-                    <span key={task.id} className={`task-dot tone-${task.category}`} />
+                    <span key={task.id} className={`task-dot tone-${CATEGORIES[task.category].tone}`} />
                   ))}
                   {tasksOnDay.length > 3 && <span className="task-more">+{tasksOnDay.length - 3}</span>}
                 </div>

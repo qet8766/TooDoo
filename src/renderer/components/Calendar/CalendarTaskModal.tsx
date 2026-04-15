@@ -41,7 +41,7 @@ export const CalendarTaskModal = ({ date, tasks, onClose }: CalendarTaskModalPro
       const payload = {
         id: crypto.randomUUID(),
         title: trimmed,
-        category: 'cool' as const, // Always cool - will auto-promote based on date
+        category: 'timed' as const,
         scheduledDate: scheduledDate.getTime(),
         scheduledTime: time || undefined,
       }
@@ -120,7 +120,7 @@ export const CalendarTaskModal = ({ date, tasks, onClose }: CalendarTaskModalPro
             placeholder="Time (optional)"
           />
 
-          <p className="category-hint">Priority auto-adjusts: cool → warm → hot → scorching as date approaches</p>
+          <p className="category-hint">Task will appear in the Timed section</p>
 
           <button type="submit" className="button add-btn" disabled={isSubmitting || !title.trim()}>
             Schedule Task

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TooDoo is an always-on-top Electron desktop overlay for task management with global hotkey quick-add popups. It uses a heat-based priority system (scorching > hot > warm > cool > project) where scheduled tasks auto-promote through categories as deadlines approach. Includes a secondary "Notetank" notes feature.
+TooDoo is an always-on-top Electron desktop overlay for task management with global hotkey quick-add popups. It uses a heat-based priority system (scorching > hot > warm > cool) for manual prioritization, plus a separate "Timed" category for deadline-based tasks with D-day markers. Includes a secondary "Notetank" notes feature.
 
 ## Commands
 
@@ -62,24 +62,17 @@ Local JSON files stored in `app.getPath('userData')/data/` (`tasks.json`, `notes
 
 All mutating operations return `Result<T>` (from `src/shared/result.ts`) -- a discriminated union `{ success: true, data: T } | { success: false, error: string }`. Renderers check `result.success` to narrow the type. Validation rules live in `src/shared/validation.ts` for reuse across processes. Data loaded from disk is sanitized via `sanitizeTasks()`/`sanitizeNotes()` to handle schema drift and corruption.
 
-### Category Auto-Promotion
+### Timed Tasks
 
-Scheduled tasks automatically change category based on time proximity to their deadline (defined in `src/shared/category-calculator.ts`):
-
-- Far away: cool
-- Within 1 week: warm
-- Within 24h (with time) or same day (date only): hot
-- Within 1h (with time) or overdue: scorching
-
-Project tasks are excluded from auto-promotion. The main process runs recalculation every 60 seconds. Users can manually override via drag-drop (`userPromoted` flag prevents auto-demotion).
+The "Timed" category (violet, formerly "Project") holds deadline-based tasks. Tasks created from the calendar go here automatically. Timed tasks are sorted by deadline (soonest first) and display D-day markers (D-7, D-1, D-Day, D+1...). The D-day calculation lives in `src/shared/category-calculator.ts`. Timed tasks never mix into heat categories -- they always stay in their own section. The quick-add for timed tasks (Alt+Shift+T) includes a date picker.
 
 ### Scorching Mode
 
-When any scorching tasks exist, the overlay hides all other categories and shows only scorching tasks. This also prevents the focus-mode minimize feature and auto-expands if minimized.
+When any scorching tasks exist, the overlay hides heat categories and shows only scorching + timed tasks. This also prevents the focus-mode minimize feature and auto-expands if minimized.
 
 ## Global Hotkeys
 
-Alt+Shift+Q/W/E/R/T open quick-add for scorching/hot/warm/cool/project. Alt+Shift+N opens note editor.
+Alt+Shift+Q/W/E/R/T open quick-add for scorching/hot/warm/cool/timed. Alt+Shift+N opens note editor.
 
 ## Testing
 

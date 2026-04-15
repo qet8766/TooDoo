@@ -88,11 +88,19 @@ export const sanitizeTask = (raw: unknown): Task | null => {
   if (typeof t.id !== 'string' || !t.id) return null
   if (typeof t.title !== 'string' || !t.title) return null
 
+  // Migrate legacy 'project' category to 'timed'
+  let category: TaskCategory = 'cool'
+  if (t.category === 'project') {
+    category = 'timed'
+  } else if (ALL_CATEGORIES.includes(t.category as TaskCategory)) {
+    category = t.category as TaskCategory
+  }
+
   return {
     id: t.id,
     title: t.title,
     description: typeof t.description === 'string' ? t.description : undefined,
-    category: ALL_CATEGORIES.includes(t.category as TaskCategory) ? (t.category as TaskCategory) : 'cool',
+    category,
     isDone: typeof t.isDone === 'boolean' ? t.isDone : false,
     createdAt: typeof t.createdAt === 'number' ? t.createdAt : Date.now(),
     updatedAt: typeof t.updatedAt === 'number' ? t.updatedAt : Date.now(),
@@ -102,10 +110,6 @@ export const sanitizeTask = (raw: unknown): Task | null => {
       : undefined,
     scheduledDate: typeof t.scheduledDate === 'number' ? t.scheduledDate : undefined,
     scheduledTime: typeof t.scheduledTime === 'string' ? t.scheduledTime : undefined,
-    baseCategory: ALL_CATEGORIES.includes(t.baseCategory as TaskCategory)
-      ? (t.baseCategory as TaskCategory)
-      : undefined,
-    userPromoted: typeof t.userPromoted === 'boolean' ? t.userPromoted : undefined,
   }
 }
 

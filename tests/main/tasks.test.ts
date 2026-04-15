@@ -23,7 +23,6 @@ import {
   addProjectNote,
   updateProjectNote,
   deleteProjectNote,
-  recalculateScheduledCategories,
 } from '@main/db/tasks'
 import { readJsonFile } from '@main/db/store'
 
@@ -102,32 +101,17 @@ describe('addTask', () => {
     expect(hotTask.sortOrder).toBe(0) // unchanged since warm task didn't shift it
   })
 
-  it('should calculate effective category for scheduled tasks', () => {
+  it('should keep the assigned category for scheduled tasks (no auto-promotion)', () => {
     const farFuture = Date.now() + 30 * 24 * 60 * 60 * 1000 // 30 days out
     const result = addTask({
       id: 'sched-1',
       title: 'Future task',
-      category: 'hot',
+      category: 'timed',
       scheduledDate: farFuture,
     })
     expect(result.success).toBe(true)
     if (result.success) {
-      expect(result.data.category).toBe('cool') // far away → cool
-      expect(result.data.baseCategory).toBe('hot')
-    }
-  })
-
-  it('should not auto-promote project tasks', () => {
-    const result = addTask({
-      id: 'proj-1',
-      title: 'Project task',
-      category: 'project',
-      scheduledDate: Date.now() + 1000,
-    })
-    expect(result.success).toBe(true)
-    if (result.success) {
-      expect(result.data.category).toBe('project')
-      expect(result.data.baseCategory).toBeUndefined()
+      expect(result.data.category).toBe('timed')
     }
   })
 
@@ -230,7 +214,7 @@ describe('deleteTask', () => {
 
 describe('addProjectNote', () => {
   beforeEach(() => {
-    addTask({ id: 'task-p', title: 'Project', category: 'project' })
+    addTask({ id: 'task-p', title: 'Timed Task', category: 'timed' })
   })
 
   it('should add note to task', () => {
@@ -258,7 +242,7 @@ describe('addProjectNote', () => {
 
 describe('updateProjectNote', () => {
   beforeEach(() => {
-    addTask({ id: 'task-p', title: 'Project', category: 'project' })
+    addTask({ id: 'task-p', title: 'Timed Task', category: 'timed' })
     addProjectNote({ id: 'note-1', taskId: 'task-p', content: 'Original' })
   })
 
@@ -277,29 +261,11 @@ describe('updateProjectNote', () => {
 
 describe('deleteProjectNote', () => {
   it('should remove note from task', () => {
-    addTask({ id: 'task-p', title: 'Project', category: 'project' })
+    addTask({ id: 'task-p', title: 'Timed Task', category: 'timed' })
     addProjectNote({ id: 'note-1', taskId: 'task-p', content: 'Delete me' })
 
     deleteProjectNote('note-1')
     const task = getTasks().find((t) => t.id === 'task-p')!
     expect(task.projectNotes?.length ?? 0).toBe(0)
-  })
-})
-
-describe('recalculateScheduledCategories', () => {
-  it('should return 0 when no tasks need updating', () => {
-    addTask({ id: 'a', title: 'No schedule', category: 'hot' })
-    expect(recalculateScheduledCategories()).toBe(0)
-  })
-
-  it('should promote overdue tasks to scorching', () => {
-    const pastDate = Date.now() - 24 * 60 * 60 * 1000 // yesterday
-    addTask({ id: 'overdue', title: 'Overdue', category: 'cool', scheduledDate: pastDate })
-
-    // After add, the task would already be categorized by addTask.
-    // But if we manually check, recalculation should find nothing extra to update
-    // because addTask already calculates the effective category.
-    const updated = recalculateScheduledCategories()
-    expect(updated).toBe(0) // already correct from addTask
   })
 })

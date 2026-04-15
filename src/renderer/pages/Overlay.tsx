@@ -8,7 +8,8 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react'
 import type { ProjectNote, Task, TaskCategory } from '@shared/types'
-import { CATEGORIES, NORMAL_CATEGORIES } from '@shared/categories'
+import { CATEGORIES, NORMAL_CATEGORIES, HEAT_CATEGORIES } from '@shared/categories'
+import { calculateDDay, getDDayUrgency } from '@shared/category-calculator'
 import { CalendarPanel } from '../components/Calendar'
 import { useFontSize } from '../hooks/useFontSize'
 import { useDeleteArm } from '../hooks/useDeleteArm'
@@ -108,22 +109,31 @@ const TooDooOverlay = () => {
       hot: [],
       warm: [],
       cool: [],
-      project: [],
+      timed: [],
     }
     const result = tasks.reduce((acc, task) => {
       if (acc[task.category]) acc[task.category].push(task)
       return acc
     }, buckets)
-    // Sort each category by sortOrder
-    for (const cat of Object.keys(result) as TaskCategory[]) {
+    // Sort heat categories by sortOrder
+    for (const cat of HEAT_CATEGORIES) {
       result[cat].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
     }
+    // Sort timed tasks by deadline (soonest first), tasks without date at bottom
+    result.timed.sort((a, b) => {
+      if (a.scheduledDate && b.scheduledDate) return a.scheduledDate - b.scheduledDate
+      if (a.scheduledDate) return -1
+      if (b.scheduledDate) return 1
+      return (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
+    })
     return result
   }, [tasks])
 
   const isScorchingMode = tasksByCategory.scorching.length > 0
   const visibleCategories = useMemo(() => {
-    return isScorchingMode ? [CATEGORIES.scorching] : NORMAL_CATEGORIES.map((k) => CATEGORIES[k])
+    // In scorching mode, show scorching + timed (timed always visible)
+    if (isScorchingMode) return [CATEGORIES.scorching, CATEGORIES.timed]
+    return NORMAL_CATEGORIES.map((k) => CATEGORIES[k])
   }, [isScorchingMode])
 
   // Focus mode: auto-expand when scorching tasks appear
@@ -174,8 +184,7 @@ const TooDooOverlay = () => {
         await window.toodoo.tasks.reorder({ taskId, targetIndex })
       } else {
         // Move to different category (at target position)
-        // Set userPromoted to prevent auto-demotion of scheduled tasks
-        const result = await window.toodoo.tasks.update({ id: taskId, category, userPromoted: true })
+        const result = await window.toodoo.tasks.update({ id: taskId, category })
         if (result.success) {
           // After moving, reorder to specific position
           await window.toodoo.tasks.reorder({ taskId, targetIndex })
@@ -193,8 +202,7 @@ const TooDooOverlay = () => {
       setDropTarget(null)
       if (!taskId) return
 
-      // Set userPromoted to prevent auto-demotion of scheduled tasks
-      const result = await window.toodoo.tasks.update({ id: taskId, category, userPromoted: true })
+      const result = await window.toodoo.tasks.update({ id: taskId, category })
       if (result.success && result.data) {
         setTasks((prev) => prev.map((item) => (item.id === taskId ? result.data! : item)))
       } else if (!result.success) {
@@ -456,7 +464,7 @@ const TooDooOverlay = () => {
                       return (
                         <div
                           key={task.id}
-                          className={`task-card no-drag ${cat.key === 'project' ? 'project-card' : ''} ${isDropTarget ? 'drop-target' : ''} ${draggingTaskId === task.id ? 'dragging' : ''}`}
+                          className={`task-card no-drag ${cat.key === 'timed' ? 'timed-card' : ''} ${isDropTarget ? 'drop-target' : ''} ${draggingTaskId === task.id ? 'dragging' : ''}`}
                           draggable={!form}
                           onDragStart={handleDragStart(task.id)}
                           onDragEnd={handleDragEnd}
@@ -534,14 +542,27 @@ const TooDooOverlay = () => {
                               <div className="task-text" onDoubleClick={() => startEdit(task)}>
                                 <div className="task-title">
                                   {task.title}
-                                  {task.scheduledDate && (
-                                    <span
-                                      className="schedule-indicator"
-                                      title={`Scheduled: ${new Date(task.scheduledDate).toLocaleDateString('ko-KR')}${task.scheduledTime ? ` ${task.scheduledTime}` : ''}`}
-                                    >
-                                      📅
-                                    </span>
-                                  )}
+                                  {task.scheduledDate &&
+                                    (cat.key === 'timed' ? (
+                                      <>
+                                        <span
+                                          className={`d-day-marker ${getDDayUrgency(task.scheduledDate) ?? ''}`}
+                                        >
+                                          {calculateDDay(task.scheduledDate)}
+                                        </span>
+                                        <span className="d-day-date">
+                                          {new Date(task.scheduledDate).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                                          {task.scheduledTime ? ` ${task.scheduledTime}` : ''}
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <span
+                                        className="schedule-indicator"
+                                        title={`Scheduled: ${new Date(task.scheduledDate).toLocaleDateString('ko-KR')}${task.scheduledTime ? ` ${task.scheduledTime}` : ''}`}
+                                      >
+                                        📅
+                                      </span>
+                                    ))}
                                 </div>
                                 {task.description && <div className="muted small-text">{task.description}</div>}
                               </div>
@@ -566,7 +587,7 @@ const TooDooOverlay = () => {
                                   </button>
                                 </>
                               ) : (
-                                cat.key === 'project' && (
+                                cat.key === 'timed' && (
                                   <button
                                     className="small-button"
                                     onClick={() => setNoteModal({ taskId: task.id, text: '' })}
@@ -577,8 +598,8 @@ const TooDooOverlay = () => {
                               )}
                             </div>
                           </div>
-                          {cat.key === 'project' && (
-                            <div className="project-notes">
+                          {cat.key === 'timed' && (
+                            <div className="timed-notes">
                               <div className="notes-list">
                                 {(task.projectNotes ?? []).map((n) => (
                                   <div key={n.id} className="note-row">

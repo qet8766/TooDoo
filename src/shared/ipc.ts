@@ -48,8 +48,6 @@ export type TaskUpdatePayload = {
   // Calendar scheduling fields (null to clear)
   scheduledDate?: number | null
   scheduledTime?: string | null
-  // Set to true when user manually changes category (prevents auto-demotion)
-  userPromoted?: boolean
 }
 
 export type ProjectNoteCreatePayload = {

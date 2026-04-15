@@ -11,8 +11,9 @@ export const CATEGORIES: Record<TaskCategory, CategoryConfig> = {
   hot: { key: 'hot', title: 'Hot', tone: 'red' },
   warm: { key: 'warm', title: 'Warm', tone: 'yellow' },
   cool: { key: 'cool', title: 'Cool', tone: 'blue' },
-  project: { key: 'project', title: 'Project', tone: 'violet' },
+  timed: { key: 'timed', title: 'Timed', tone: 'violet' },
 }
 
-export const NORMAL_CATEGORIES: TaskCategory[] = ['hot', 'warm', 'cool', 'project']
-export const ALL_CATEGORIES: TaskCategory[] = ['scorching', 'hot', 'warm', 'cool', 'project']
+export const HEAT_CATEGORIES: TaskCategory[] = ['scorching', 'hot', 'warm', 'cool']
+export const NORMAL_CATEGORIES: TaskCategory[] = ['hot', 'warm', 'cool', 'timed']
+export const ALL_CATEGORIES: TaskCategory[] = ['scorching', 'hot', 'warm', 'cool', 'timed']

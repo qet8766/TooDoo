@@ -394,7 +394,7 @@ a {
   gap: 0;
 }
 
-.toodoo-compact .project-notes {
+.toodoo-compact .timed-notes {
   padding-top: 4px;
   gap: 4px;
 }
@@ -409,7 +409,7 @@ a {
   font-size: 0.9em;
 }
 
-.project-card {
+.timed-card {
   border-style: dashed;
 }
 
@@ -436,6 +436,37 @@ a {
 
 .schedule-indicator:hover {
   opacity: 1;
+}
+
+.d-day-marker {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.75em;
+  font-weight: 700;
+  background: rgba(192, 132, 252, 0.2);
+  color: #c084fc;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.d-day-marker.overdue {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.d-day-marker.today {
+  background: rgba(245, 245, 245, 0.25);
+  color: #f5f5f5;
+  animation: armed-pulse 0.8s ease-in-out infinite alternate;
+}
+
+.d-day-date {
+  margin-left: 4px;
+  font-size: 0.75em;
+  opacity: 0.5;
+  white-space: nowrap;
 }
 
 .task-text {
@@ -616,7 +647,7 @@ a {
   }
 }
 
-.project-notes {
+.timed-notes {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -739,6 +770,15 @@ a {
 
 .quick-add-header p {
   margin: 0;
+}
+
+.quick-add-schedule {
+  display: flex;
+  gap: 8px;
+}
+
+.quick-add-schedule input {
+  flex: 1;
 }
 
 .status-text {

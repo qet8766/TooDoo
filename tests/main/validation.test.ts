@@ -174,8 +174,6 @@ describe('sanitizeTask', () => {
       projectNotes: undefined,
       scheduledDate: undefined,
       scheduledTime: undefined,
-      baseCategory: undefined,
-      userPromoted: undefined,
     })
   })
 

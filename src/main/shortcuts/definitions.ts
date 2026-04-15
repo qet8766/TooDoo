@@ -9,7 +9,7 @@ const SHORTCUT_CONFIGS = {
   'toodoo:hot': { accelerator: 'Alt+Shift+W', description: 'Add hot task', category: 'hot' },
   'toodoo:warm': { accelerator: 'Alt+Shift+E', description: 'Add warm task', category: 'warm' },
   'toodoo:cool': { accelerator: 'Alt+Shift+R', description: 'Add cool task', category: 'cool' },
-  'toodoo:project': { accelerator: 'Alt+Shift+T', description: 'Add project task', category: 'project' },
+  'toodoo:timed': { accelerator: 'Alt+Shift+T', description: 'Add timed task', category: 'timed' },
   'notetank:new': { accelerator: 'Alt+Shift+N', description: 'Add new note', category: null },
 } as const satisfies Record<string, ShortcutConfig>
 

@@ -60,8 +60,3 @@ export const updateNote = (p: NoteUpdatePayload): Promise<Result<Note | null>> =
   queue.enqueue(() => noteOps.updateNote(p))
 
 export const deleteNote = (id: string): Promise<void> => queue.enqueue(() => noteOps.deleteNote(id))
-
-// --- Scheduled Task Category Recalculation ---
-
-export const recalculateScheduledCategories = (): Promise<number> =>
-  queue.enqueue(() => taskOps.recalculateScheduledCategories())

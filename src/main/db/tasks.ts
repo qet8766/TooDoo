@@ -3,7 +3,6 @@ import type { ProjectNote, Task, TaskCategory } from '@shared/types'
 import type { Result } from '@shared/result'
 import { ok, fail } from '@shared/result'
 import { validateId, validateTaskFields, validateProjectNoteFields, sanitizeTasks } from '@shared/validation'
-import { calculateEffectiveCategory, getTasksNeedingUpdate } from '@shared/category-calculator'
 import { readJsonFile, writeJsonFile } from './store'
 
 // --- In-Memory Cache ---
@@ -64,22 +63,12 @@ export const addTask = (p: {
 
   const now = Date.now()
 
-  // Calculate effective category for scheduled tasks (project tasks excluded)
-  let effectiveCategory = p.category
-  let baseCategory: TaskCategory | undefined = undefined
-
-  if (p.scheduledDate && p.category !== 'project') {
-    baseCategory = p.category
-    effectiveCategory = calculateEffectiveCategory(p.scheduledDate, p.scheduledTime, now)
-  }
-
   // New tasks get sortOrder 0 (top of list), existing tasks shift down
   const task: Task = {
     id: p.id,
     title: p.title.trim(),
     description: p.description?.trim(),
-    category: effectiveCategory,
-    baseCategory,
+    category: p.category,
     scheduledDate: p.scheduledDate,
     scheduledTime: p.scheduledTime,
     isDone: p.isDone ?? false,
@@ -102,7 +91,6 @@ export const updateTask = (p: {
   category?: TaskCategory
   scheduledDate?: number | null
   scheduledTime?: string | null
-  userPromoted?: boolean
 }): Result<Task | null> => {
   const fieldErr = validateTaskFields(p)
   if (fieldErr) return fail(fieldErr)
@@ -112,46 +100,18 @@ export const updateTask = (p: {
 
   const now = Date.now()
 
-  // Handle scheduling field updates
   const newScheduledDate = p.scheduledDate === null ? undefined : (p.scheduledDate ?? existing.scheduledDate)
   const newScheduledTime = p.scheduledTime === null ? undefined : (p.scheduledTime ?? existing.scheduledTime)
-
-  // Determine base category
-  let newBaseCategory = existing.baseCategory
-  if (p.category !== undefined) {
-    if (newScheduledDate && p.category !== 'project') {
-      newBaseCategory = p.category
-    } else if (!newScheduledDate) {
-      newBaseCategory = undefined
-    }
-  } else if (p.scheduledDate !== undefined) {
-    if (newScheduledDate && existing.category !== 'project') {
-      newBaseCategory = existing.baseCategory ?? existing.category
-    } else if (!newScheduledDate) {
-      newBaseCategory = undefined
-    }
-  }
-
-  // Calculate effective category
-  let effectiveCategory = p.category ?? existing.category
-  if (newScheduledDate && effectiveCategory !== 'project') {
-    effectiveCategory = calculateEffectiveCategory(newScheduledDate, newScheduledTime, now)
-  } else if (!newScheduledDate && existing.baseCategory) {
-    effectiveCategory = existing.baseCategory
-  }
-
-  const categoryChanged = effectiveCategory !== existing.category
-  const newUserPromoted = p.userPromoted ?? existing.userPromoted
+  const newCategory = p.category ?? existing.category
+  const categoryChanged = newCategory !== existing.category
 
   const updated: Task = {
     ...existing,
     title: p.title !== undefined ? p.title.trim() : existing.title,
     description: p.description === null ? undefined : (p.description?.trim() ?? existing.description),
-    category: effectiveCategory,
-    baseCategory: newBaseCategory,
+    category: newCategory,
     scheduledDate: newScheduledDate,
     scheduledTime: newScheduledTime,
-    userPromoted: newUserPromoted,
     isDone: p.isDone ?? existing.isDone,
     updatedAt: now,
     sortOrder: categoryChanged ? 0 : (existing.sortOrder ?? 0),
@@ -160,7 +120,7 @@ export const updateTask = (p: {
   if (categoryChanged) {
     cache = cache.map((t) => {
       if (t.id === p.id) return updated
-      if (t.category === effectiveCategory) return { ...t, sortOrder: (t.sortOrder ?? 0) + 1 }
+      if (t.category === newCategory) return { ...t, sortOrder: (t.sortOrder ?? 0) + 1 }
       return t
     })
   } else {
@@ -272,50 +232,4 @@ export const deleteProjectNote = (id: string): void => {
 
   cache = cache.map((t) => (t.id === found.task.id ? updatedTask : t))
   persist()
-}
-
-// --- Scheduled Task Category Recalculation ---
-
-export const recalculateScheduledCategories = (): number => {
-  const now = Date.now()
-  const tasksNeedingUpdate = getTasksNeedingUpdate(cache, now)
-
-  if (tasksNeedingUpdate.length === 0) return 0
-
-  const updatedIds = new Set<string>()
-  const updatedTasks: Task[] = []
-
-  for (const task of tasksNeedingUpdate) {
-    const newCategory = calculateEffectiveCategory(task.scheduledDate!, task.scheduledTime, now)
-    if (newCategory === task.category) continue
-
-    updatedIds.add(task.id)
-    updatedTasks.push({
-      ...task,
-      category: newCategory,
-      updatedAt: now,
-      sortOrder: 0,
-    })
-  }
-
-  if (updatedIds.size === 0) return 0
-
-  cache = cache.map((task) => updatedTasks.find((t) => t.id === task.id) ?? task)
-
-  // Reassign sortOrder within categories
-  const byCategory = new Map<TaskCategory, Task[]>()
-  for (const task of cache) {
-    if (!byCategory.has(task.category)) byCategory.set(task.category, [])
-    byCategory.get(task.category)!.push(task)
-  }
-
-  cache = cache.map((task) => {
-    const categoryTasks = byCategory.get(task.category) ?? []
-    const sorted = [...categoryTasks].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-    const newSortOrder = sorted.findIndex((t) => t.id === task.id)
-    return { ...task, sortOrder: newSortOrder >= 0 ? newSortOrder : task.sortOrder }
-  })
-
-  persist()
-  return updatedIds.size
 }

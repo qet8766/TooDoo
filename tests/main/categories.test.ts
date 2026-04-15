@@ -15,7 +15,7 @@ describe('Category Definitions', () => {
       expect(CATEGORIES).toHaveProperty('hot')
       expect(CATEGORIES).toHaveProperty('warm')
       expect(CATEGORIES).toHaveProperty('cool')
-      expect(CATEGORIES).toHaveProperty('project')
+      expect(CATEGORIES).toHaveProperty('timed')
     })
 
     it('should have correct keys matching category names', () => {
@@ -56,8 +56,8 @@ describe('Category Definitions', () => {
       expect(CATEGORIES.cool.tone).toBe('blue')
     })
 
-    it('should have violet tone for project', () => {
-      expect(CATEGORIES.project.tone).toBe('violet')
+    it('should have violet tone for timed', () => {
+      expect(CATEGORIES.timed.tone).toBe('violet')
     })
   })
 
@@ -67,18 +67,18 @@ describe('Category Definitions', () => {
       expect(CATEGORIES.hot.title).toBe('Hot')
       expect(CATEGORIES.warm.title).toBe('Warm')
       expect(CATEGORIES.cool.title).toBe('Cool')
-      expect(CATEGORIES.project.title).toBe('Project')
+      expect(CATEGORIES.timed.title).toBe('Timed')
     })
   })
 })
 
 describe('Category Arrays', () => {
   describe('NORMAL_CATEGORIES', () => {
-    it('should contain hot, warm, cool, project', () => {
+    it('should contain hot, warm, cool, timed', () => {
       expect(NORMAL_CATEGORIES).toContain('hot')
       expect(NORMAL_CATEGORIES).toContain('warm')
       expect(NORMAL_CATEGORIES).toContain('cool')
-      expect(NORMAL_CATEGORIES).toContain('project')
+      expect(NORMAL_CATEGORIES).toContain('timed')
     })
 
     it('should NOT contain scorching', () => {
@@ -90,7 +90,7 @@ describe('Category Arrays', () => {
     })
 
     it('should be in priority order', () => {
-      expect(NORMAL_CATEGORIES).toEqual(['hot', 'warm', 'cool', 'project'])
+      expect(NORMAL_CATEGORIES).toEqual(['hot', 'warm', 'cool', 'timed'])
     })
   })
 
@@ -100,7 +100,7 @@ describe('Category Arrays', () => {
       expect(ALL_CATEGORIES).toContain('hot')
       expect(ALL_CATEGORIES).toContain('warm')
       expect(ALL_CATEGORIES).toContain('cool')
-      expect(ALL_CATEGORIES).toContain('project')
+      expect(ALL_CATEGORIES).toContain('timed')
     })
 
     it('should have exactly 5 categories', () => {
@@ -125,7 +125,7 @@ describe('Category Priority', () => {
     expect(NORMAL_CATEGORIES.indexOf('hot')).toBe(0)
   })
 
-  it('project should be last in normal categories', () => {
-    expect(NORMAL_CATEGORIES[NORMAL_CATEGORIES.length - 1]).toBe('project')
+  it('timed should be last in normal categories', () => {
+    expect(NORMAL_CATEGORIES[NORMAL_CATEGORIES.length - 1]).toBe('timed')
   })
 })
