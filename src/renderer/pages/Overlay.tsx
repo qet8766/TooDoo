@@ -176,7 +176,7 @@ const TooDooOverlay = () => {
         // Move to different category (at target position)
         // Set userPromoted to prevent auto-demotion of scheduled tasks
         const result = await window.toodoo.tasks.update({ id: taskId, category, userPromoted: true })
-        if (result && !('error' in result)) {
+        if (result.success) {
           // After moving, reorder to specific position
           await window.toodoo.tasks.reorder({ taskId, targetIndex })
         }
@@ -195,9 +195,9 @@ const TooDooOverlay = () => {
 
       // Set userPromoted to prevent auto-demotion of scheduled tasks
       const result = await window.toodoo.tasks.update({ id: taskId, category, userPromoted: true })
-      if (result && !('error' in result)) {
-        setTasks((prev) => prev.map((item) => (item.id === taskId ? result : item)))
-      } else if (result && 'error' in result) {
+      if (result.success && result.data) {
+        setTasks((prev) => prev.map((item) => (item.id === taskId ? result.data! : item)))
+      } else if (!result.success) {
         console.error('Failed to update task category:', result.error)
       }
     },
@@ -242,14 +242,14 @@ const TooDooOverlay = () => {
       scheduledDate,
       scheduledTime: form.scheduledTime || null,
     })
-    if (result && !('error' in result)) {
-      setTasks((prev) => prev.map((item) => (item.id === taskId ? result : item)))
+    if (result.success && result.data) {
+      setTasks((prev) => prev.map((item) => (item.id === taskId ? result.data! : item)))
       setEditing((prev) => {
         const next = { ...prev }
         delete next[taskId]
         return next
       })
-    } else if (result && 'error' in result) {
+    } else if (!result.success) {
       console.error('Failed to save task:', result.error)
       // Keep editing mode open so user can fix the issue
     }
@@ -278,18 +278,17 @@ const TooDooOverlay = () => {
       content: trimmed,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      isDeleted: false,
     }
 
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, projectNotes: [...(t.projectNotes ?? []), optimistic] } : t)),
     )
     const result = await window.toodoo.tasks.addNote(optimistic)
-    if (result && !('error' in result)) {
+    if (result.success) {
       setTasks((prev) =>
         prev.map((t) =>
           t.id === taskId
-            ? { ...t, projectNotes: (t.projectNotes ?? []).map((n) => (n.id === optimistic.id ? result : n)) }
+            ? { ...t, projectNotes: (t.projectNotes ?? []).map((n) => (n.id === optimistic.id ? result.data : n)) }
             : t,
         ),
       )
@@ -300,7 +299,7 @@ const TooDooOverlay = () => {
           t.id === taskId ? { ...t, projectNotes: (t.projectNotes ?? []).filter((n) => n.id !== optimistic.id) } : t,
         ),
       )
-      console.error('Failed to add note:', result && 'error' in result ? result.error : 'Unknown error')
+      console.error('Failed to add note:', result.error)
     }
   }
 
@@ -339,11 +338,12 @@ const TooDooOverlay = () => {
       return
     }
     const result = await window.toodoo.tasks.updateNote({ id: editingNote.noteId, content: trimmed })
-    if (result && !('error' in result)) {
+    if (result.success && result.data) {
+      const updated = result.data
       setTasks((prev) =>
         prev.map((t) =>
           t.id === taskId
-            ? { ...t, projectNotes: (t.projectNotes ?? []).map((n) => (n.id === editingNote.noteId ? result : n)) }
+            ? { ...t, projectNotes: (t.projectNotes ?? []).map((n) => (n.id === editingNote.noteId ? updated : n)) }
             : t,
         ),
       )

@@ -6,7 +6,6 @@ export interface ProjectNote {
   content: string
   createdAt: number
   updatedAt: number
-  isDeleted: boolean
 }
 
 export interface Task {
@@ -17,7 +16,6 @@ export interface Task {
   isDone: boolean
   createdAt: number
   updatedAt: number
-  isDeleted: boolean
   sortOrder: number
   projectNotes?: ProjectNote[]
   // Calendar scheduling fields
@@ -33,5 +31,4 @@ export interface Note {
   content: string
   createdAt: number
   updatedAt: number
-  isDeleted: boolean
 }

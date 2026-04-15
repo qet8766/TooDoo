@@ -76,9 +76,6 @@ export type NoteUpdatePayload = {
   content?: string
 }
 
-// Error response type for validation failures
-export type ErrorResponse = { error: string }
-
 // Reorder payload - moves a task to a new position within a category
 export type TaskReorderPayload = {
   taskId: string

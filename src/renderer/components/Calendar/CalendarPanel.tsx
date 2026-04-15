@@ -24,8 +24,8 @@ export const CalendarPanel = ({ isOpen, onToggle, tasks }: CalendarPanelProps) =
   })
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
 
-  // Filter to only scheduled tasks (not deleted)
-  const scheduledTasks = tasks.filter((t) => t.scheduledDate && !t.isDeleted)
+  // Filter to only scheduled tasks
+  const scheduledTasks = tasks.filter((t) => t.scheduledDate)
 
   const handleMonthChange = (newYear: number, newMonth: number) => {
     // Limit to 2026-2027

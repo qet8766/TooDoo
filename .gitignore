@@ -28,9 +28,5 @@ Thumbs.db
 # Test artifacts
 test-results/
 
-# Playwright
-playwright-report/
-playwright/.cache/
-
 # Windows error artifacts
 nul

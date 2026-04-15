@@ -1,0 +1,149 @@
+import type { Note, ProjectNote, Task, TaskCategory } from './types'
+import { ALL_CATEGORIES } from './categories'
+
+// --- Limits ---
+
+export const LIMITS = {
+  TASK_TITLE_MAX: 500,
+  TASK_DESCRIPTION_MAX: 5000,
+  NOTE_TITLE_MAX: 200,
+  NOTE_CONTENT_MAX: 50000,
+  PROJECT_NOTE_CONTENT_MAX: 10000,
+} as const
+
+// --- Core combinator ---
+
+/** Returns the first error message whose condition is true, or null if all pass. */
+export const validate = (rules: [boolean, string][]): string | null => rules.find(([fail]) => fail)?.[1] ?? null
+
+// --- Format validators ---
+
+const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/
+
+export const isValidTimeFormat = (s: string): boolean => TIME_REGEX.test(s)
+
+// --- Field-level validators ---
+
+export const validateId = (id: unknown): string | null => {
+  if (typeof id !== 'string' || !id.trim()) return 'ID must be a non-empty string'
+  return null
+}
+
+export const validateTaskFields = (p: {
+  title?: string
+  description?: string | null
+  category?: TaskCategory
+  scheduledTime?: string | null
+}): string | null =>
+  validate([
+    [p.title !== undefined && typeof p.title !== 'string', 'Title must be a string'],
+    [typeof p.title === 'string' && !p.title.trim(), 'Title cannot be empty'],
+    [typeof p.title === 'string' && p.title.length > LIMITS.TASK_TITLE_MAX, 'Title too long'],
+    [p.description != null && typeof p.description !== 'string', 'Description must be a string'],
+    [typeof p.description === 'string' && p.description.length > LIMITS.TASK_DESCRIPTION_MAX, 'Description too long'],
+    [p.category !== undefined && !ALL_CATEGORIES.includes(p.category), 'Invalid category'],
+    [
+      p.scheduledTime != null && typeof p.scheduledTime === 'string' && !isValidTimeFormat(p.scheduledTime),
+      'Invalid time format (expected HH:MM)',
+    ],
+  ])
+
+export const validateProjectNoteFields = (p: { content: string }): string | null =>
+  validate([
+    [typeof p.content !== 'string', 'Content must be a string'],
+    [!p.content.trim(), 'Content cannot be empty'],
+    [p.content.length > LIMITS.PROJECT_NOTE_CONTENT_MAX, 'Content too long'],
+  ])
+
+export const validateNoteFields = (p: { title?: string; content?: string }): string | null =>
+  validate([
+    [p.title !== undefined && typeof p.title !== 'string', 'Title must be a string'],
+    [typeof p.title === 'string' && !p.title.trim(), 'Title cannot be empty'],
+    [typeof p.title === 'string' && p.title.length > LIMITS.NOTE_TITLE_MAX, 'Title too long'],
+    [p.content !== undefined && typeof p.content !== 'string', 'Content must be a string'],
+    [typeof p.content === 'string' && p.content.length > LIMITS.NOTE_CONTENT_MAX, 'Content too long'],
+  ])
+
+// --- Schema sanitization (for data loaded from JSON files) ---
+
+const sanitizeProjectNote = (raw: unknown): ProjectNote | null => {
+  if (!raw || typeof raw !== 'object') return null
+  const n = raw as Record<string, unknown>
+  if (typeof n.id !== 'string' || !n.id) return null
+  if (typeof n.taskId !== 'string' || !n.taskId) return null
+  if (typeof n.content !== 'string') return null
+
+  return {
+    id: n.id,
+    taskId: n.taskId,
+    content: n.content,
+    createdAt: typeof n.createdAt === 'number' ? n.createdAt : Date.now(),
+    updatedAt: typeof n.updatedAt === 'number' ? n.updatedAt : Date.now(),
+  }
+}
+
+export const sanitizeTask = (raw: unknown): Task | null => {
+  if (!raw || typeof raw !== 'object') return null
+  const t = raw as Record<string, unknown>
+  if (typeof t.id !== 'string' || !t.id) return null
+  if (typeof t.title !== 'string' || !t.title) return null
+
+  return {
+    id: t.id,
+    title: t.title,
+    description: typeof t.description === 'string' ? t.description : undefined,
+    category: ALL_CATEGORIES.includes(t.category as TaskCategory) ? (t.category as TaskCategory) : 'cool',
+    isDone: typeof t.isDone === 'boolean' ? t.isDone : false,
+    createdAt: typeof t.createdAt === 'number' ? t.createdAt : Date.now(),
+    updatedAt: typeof t.updatedAt === 'number' ? t.updatedAt : Date.now(),
+    sortOrder: typeof t.sortOrder === 'number' ? t.sortOrder : 0,
+    projectNotes: Array.isArray(t.projectNotes)
+      ? (t.projectNotes as unknown[]).map(sanitizeProjectNote).filter((n): n is ProjectNote => n !== null)
+      : undefined,
+    scheduledDate: typeof t.scheduledDate === 'number' ? t.scheduledDate : undefined,
+    scheduledTime: typeof t.scheduledTime === 'string' ? t.scheduledTime : undefined,
+    baseCategory: ALL_CATEGORIES.includes(t.baseCategory as TaskCategory)
+      ? (t.baseCategory as TaskCategory)
+      : undefined,
+    userPromoted: typeof t.userPromoted === 'boolean' ? t.userPromoted : undefined,
+  }
+}
+
+export const sanitizeNote = (raw: unknown): Note | null => {
+  if (!raw || typeof raw !== 'object') return null
+  const n = raw as Record<string, unknown>
+  if (typeof n.id !== 'string' || !n.id) return null
+  if (typeof n.title !== 'string' || !n.title) return null
+
+  return {
+    id: n.id,
+    title: n.title,
+    content: typeof n.content === 'string' ? n.content : '',
+    createdAt: typeof n.createdAt === 'number' ? n.createdAt : Date.now(),
+    updatedAt: typeof n.updatedAt === 'number' ? n.updatedAt : Date.now(),
+  }
+}
+
+/** Parse and sanitize an array of tasks from raw JSON data. Drops malformed entries. */
+export const sanitizeTasks = (raw: unknown): Task[] => {
+  if (!Array.isArray(raw)) return []
+  const tasks: Task[] = []
+  for (const entry of raw) {
+    const task = sanitizeTask(entry)
+    if (task) tasks.push(task)
+    else console.warn('Dropped malformed task entry during load:', entry)
+  }
+  return tasks
+}
+
+/** Parse and sanitize an array of notes from raw JSON data. Drops malformed entries. */
+export const sanitizeNotes = (raw: unknown): Note[] => {
+  if (!Array.isArray(raw)) return []
+  const notes: Note[] = []
+  for (const entry of raw) {
+    const note = sanitizeNote(entry)
+    if (note) notes.push(note)
+    else console.warn('Dropped malformed note entry during load:', entry)
+  }
+  return notes
+}

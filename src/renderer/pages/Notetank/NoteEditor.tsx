@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useLocation } from 'react-router-dom'
+import { LIMITS } from '@shared/validation'
 
 const NoteEditor = () => {
   const location = useLocation()
@@ -48,14 +49,14 @@ const NoteEditor = () => {
       return
     }
 
-    if (trimmedTitle.length > 200) {
-      setStatus('Title too long (max 200 characters)')
+    if (trimmedTitle.length > LIMITS.NOTE_TITLE_MAX) {
+      setStatus(`Title too long (max ${LIMITS.NOTE_TITLE_MAX} characters)`)
       return
     }
 
     const trimmedContent = content.trim()
-    if (trimmedContent.length > 50000) {
-      setStatus('Content too long (max 50000 characters)')
+    if (trimmedContent.length > LIMITS.NOTE_CONTENT_MAX) {
+      setStatus(`Content too long (max ${LIMITS.NOTE_CONTENT_MAX} characters)`)
       return
     }
 
@@ -68,7 +69,7 @@ const NoteEditor = () => {
           title: trimmedTitle,
           content: trimmedContent,
         })
-        if (result && 'error' in result) {
+        if (!result.success) {
           setStatus(`Failed: ${result.error}`)
           return
         }
@@ -79,7 +80,7 @@ const NoteEditor = () => {
           title: trimmedTitle,
           content: trimmedContent,
         })
-        if (result && 'error' in result) {
+        if (!result.success) {
           setStatus(`Failed: ${result.error}`)
           return
         }

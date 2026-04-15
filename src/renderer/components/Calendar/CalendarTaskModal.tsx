@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { Task } from '@shared/types'
 import { CATEGORIES } from '@shared/categories'
+import { LIMITS } from '@shared/validation'
 import { getHoliday, formatDateStr } from '@shared/holidays'
 import './CalendarTaskModal.css'
 
@@ -46,7 +47,7 @@ export const CalendarTaskModal = ({ date, tasks, onClose }: CalendarTaskModalPro
       }
 
       const result = await window.toodoo.tasks.add(payload)
-      if (result && 'error' in result) {
+      if (!result.success) {
         setStatus(`Error: ${result.error}`)
         setIsSubmitting(false)
         return
@@ -107,7 +108,7 @@ export const CalendarTaskModal = ({ date, tasks, onClose }: CalendarTaskModalPro
             placeholder="Task title"
             className="task-input"
             autoFocus
-            maxLength={500}
+            maxLength={LIMITS.TASK_TITLE_MAX}
           />
 
           <input

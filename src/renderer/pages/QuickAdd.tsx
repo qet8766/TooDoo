@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'r
 import { useLocation } from 'react-router-dom'
 import type { TaskCategory } from '@shared/types'
 import { ALL_CATEGORIES, CATEGORIES } from '@shared/categories'
+import { LIMITS } from '@shared/validation'
 
 const isValidCategory = (cat: string | null): cat is TaskCategory => {
   return cat !== null && ALL_CATEGORIES.includes(cat as TaskCategory)
@@ -25,14 +26,14 @@ const QuickAdd = () => {
       return
     }
 
-    if (trimmed.length > 500) {
-      setStatus('Title too long (max 500 characters)')
+    if (trimmed.length > LIMITS.TASK_TITLE_MAX) {
+      setStatus(`Title too long (max ${LIMITS.TASK_TITLE_MAX} characters)`)
       return
     }
 
     const descTrimmed = description.trim()
-    if (descTrimmed.length > 5000) {
-      setStatus('Description too long (max 5000 characters)')
+    if (descTrimmed.length > LIMITS.TASK_DESCRIPTION_MAX) {
+      setStatus(`Description too long (max ${LIMITS.TASK_DESCRIPTION_MAX} characters)`)
       return
     }
 
@@ -47,8 +48,7 @@ const QuickAdd = () => {
     try {
       setStatus('Adding...')
       const result = await window.toodoo.tasks.add(payload)
-      // Check if result is an error object
-      if (result && 'error' in result) {
+      if (!result.success) {
         setStatus(`Failed: ${result.error}`)
         return
       }

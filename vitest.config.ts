@@ -13,17 +13,7 @@ export default defineConfig({
     include: ['tests/main/**/*.test.ts'],
 
     // Exclude patterns
-    exclude: [
-      'node_modules',
-      'dist',
-      'dist-electron',
-      'release',
-      // Exclude all spec files (Playwright tests)
-      '**/*.spec.ts',
-      '**/*.spec.tsx',
-      // Exclude renderer tests (use Playwright)
-      'tests/renderer/**',
-    ],
+    exclude: ['node_modules', 'dist', 'dist-electron', 'release'],
 
     // Coverage configuration
     coverage: {

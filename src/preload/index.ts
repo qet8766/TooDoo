@@ -1,8 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Note, ProjectNote, Task } from '@shared/types'
+import type { Result } from '@shared/result'
 import {
   IPC,
-  type ErrorResponse,
   type NoteCreatePayload,
   type NoteUpdatePayload,
   type ProjectNoteCreatePayload,
@@ -15,16 +15,15 @@ import {
 // Tasks API
 const tasksApi = {
   list: () => ipcRenderer.invoke(IPC.TASKS_LIST) as Promise<Task[]>,
-  add: (payload: TaskCreatePayload) => ipcRenderer.invoke(IPC.TASKS_ADD, payload) as Promise<Task | ErrorResponse>,
-  update: (payload: TaskUpdatePayload) =>
-    ipcRenderer.invoke(IPC.TASKS_UPDATE, payload) as Promise<Task | null | ErrorResponse>,
+  add: (payload: TaskCreatePayload) => ipcRenderer.invoke(IPC.TASKS_ADD, payload) as Promise<Result<Task>>,
+  update: (payload: TaskUpdatePayload) => ipcRenderer.invoke(IPC.TASKS_UPDATE, payload) as Promise<Result<Task | null>>,
   remove: (id: string) => ipcRenderer.invoke(IPC.TASKS_DELETE, id) as Promise<{ id: string }>,
   reorder: (payload: TaskReorderPayload) =>
     ipcRenderer.invoke(IPC.TASKS_REORDER, payload) as Promise<{ success: boolean }>,
   addNote: (payload: ProjectNoteCreatePayload) =>
-    ipcRenderer.invoke(IPC.TASKS_NOTE_ADD, payload) as Promise<ProjectNote | ErrorResponse>,
+    ipcRenderer.invoke(IPC.TASKS_NOTE_ADD, payload) as Promise<Result<ProjectNote>>,
   updateNote: (payload: ProjectNoteUpdatePayload) =>
-    ipcRenderer.invoke(IPC.TASKS_NOTE_UPDATE, payload) as Promise<ProjectNote | null | ErrorResponse>,
+    ipcRenderer.invoke(IPC.TASKS_NOTE_UPDATE, payload) as Promise<Result<ProjectNote | null>>,
   removeNote: (id: string) => ipcRenderer.invoke(IPC.TASKS_NOTE_DELETE, id) as Promise<{ id: string }>,
 }
 
@@ -43,9 +42,8 @@ const openQuickAdd = (category: string) => ipcRenderer.send(IPC.QUICK_ADD_OPEN, 
 // Notes API (Notetank)
 const notesApi = {
   list: () => ipcRenderer.invoke(IPC.NOTES_LIST) as Promise<Note[]>,
-  add: (payload: NoteCreatePayload) => ipcRenderer.invoke(IPC.NOTES_ADD, payload) as Promise<Note | ErrorResponse>,
-  update: (payload: NoteUpdatePayload) =>
-    ipcRenderer.invoke(IPC.NOTES_UPDATE, payload) as Promise<Note | null | ErrorResponse>,
+  add: (payload: NoteCreatePayload) => ipcRenderer.invoke(IPC.NOTES_ADD, payload) as Promise<Result<Note>>,
+  update: (payload: NoteUpdatePayload) => ipcRenderer.invoke(IPC.NOTES_UPDATE, payload) as Promise<Result<Note | null>>,
   remove: (id: string) => ipcRenderer.invoke(IPC.NOTES_DELETE, id) as Promise<{ id: string }>,
 }
 
