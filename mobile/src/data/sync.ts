@@ -1,7 +1,6 @@
-import path from 'node:path'
+import { AppState, type AppStateStatus } from 'react-native'
+import NetInfo from '@react-native-community/netinfo'
 import type { Task, ProjectNote, Note } from '@shared/types'
-import type { SyncStatusPayload } from '@shared/ipc'
-import { IPC } from '@shared/ipc'
 import {
   toTaskRow,
   fromTaskRow,
@@ -10,97 +9,78 @@ import {
   toNoteRow,
   fromNoteRow,
 } from '@shared/supabase-types'
-import { readJsonFile, writeJsonFile } from '../store'
-import * as taskOps from '../tasks'
-import * as noteOps from '../notes'
+import { readJson, writeJson } from './persistence'
 import { getClient, getUserId, getAuthStatus } from './supabase'
-import { broadcast, broadcastTaskChange, broadcastNotesChange } from '../../broadcast'
-import { app, net } from '../../electron'
 
-type SyncStatus = SyncStatusPayload['status']
+type SyncStatus = 'synced' | 'syncing' | 'offline' | 'error'
+
+const META_KEY = '@toodoo/sync-meta'
 
 let syncStatus: SyncStatus = 'offline'
 let lastSyncedAt = 0
-let metaFilePath = ''
 let wasOnline = false
-let enqueue: <T>(fn: () => T) => Promise<T>
 let pushChain: Promise<void> = Promise.resolve()
-let syncLock = false
-const dirtyIds = new Set<string>()
 
-const CONNECTIVITY_POLL_MS = 30_000
+// Callbacks injected by stores — avoids circular dependency
+let getAllTasksRaw: () => Task[] = () => []
+let replaceTaskCache: (tasks: Task[]) => void = () => {}
+let getAllNotesRaw: () => Note[] = () => []
+let replaceNoteCache: (notes: Note[]) => void = () => {}
+let enqueue: <T>(fn: () => T) => Promise<T> = (fn) => Promise.resolve(fn())
 
-// --- Status ---
+// Status change listeners
+type StatusListener = (status: SyncStatus) => void
+const statusListeners: Set<StatusListener> = new Set()
+
+export const onSyncStatusChanged = (fn: StatusListener): (() => void) => {
+  statusListeners.add(fn)
+  return () => statusListeners.delete(fn)
+}
 
 export const getSyncStatus = (): SyncStatus => syncStatus
 
 const setSyncStatus = (status: SyncStatus): void => {
   if (status === syncStatus) return
   syncStatus = status
-  broadcast(IPC.SYNC_STATUS_CHANGED, { status } satisfies SyncStatusPayload)
+  statusListeners.forEach((fn) => fn(status))
 }
 
 // --- Persistence ---
 
-const loadMeta = (): void => {
-  const raw = readJsonFile(metaFilePath)
-  if (raw && typeof raw === 'object' && 'lastSyncedAt' in raw) {
-    lastSyncedAt = (raw as { lastSyncedAt: number }).lastSyncedAt
+const loadMeta = async (): Promise<void> => {
+  const raw = await readJson<{ lastSyncedAt: number }>(META_KEY)
+  if (raw && typeof raw.lastSyncedAt === 'number') {
+    lastSyncedAt = raw.lastSyncedAt
   }
 }
 
-const saveMeta = (): void => {
-  writeJsonFile(metaFilePath, { lastSyncedAt })
-}
-
-// --- Auth Health Check ---
-
-const AUTH_CHECK_COOLDOWN_MS = 30_000
-let lastAuthCheckAt = 0
-
-const checkAuthHealth = async (): Promise<void> => {
-  try {
-    const client = getClient()
-    const { data, error } = await client.auth.getUser()
-    if (error || !data.user) {
-      setSyncStatus('auth-expired')
-      broadcast(IPC.AUTH_STATUS_CHANGED, { isSignedIn: false, userId: null })
-    }
-  } catch {
-    // Network error during check — not an auth problem, ignore
-  }
-}
-
-const maybeCheckAuth = (): void => {
-  if (Date.now() - lastAuthCheckAt > AUTH_CHECK_COOLDOWN_MS) {
-    lastAuthCheckAt = Date.now()
-    checkAuthHealth()
-  }
+const saveMeta = async (): Promise<void> => {
+  await writeJson(META_KEY, { lastSyncedAt })
 }
 
 // --- Push ---
 
 const doUpsert = async (type: 'task' | 'projectNote' | 'note', entity: Task | ProjectNote | Note): Promise<boolean> => {
-  const userId = getUserId()!
+  const uid = getUserId()!
   const client = getClient()
 
   try {
     if (type === 'task') {
-      const row = toTaskRow(entity as Task, userId)
+      const row = toTaskRow(entity as Task, uid)
       const { error } = await client.from('tasks').upsert(row)
       if (error) {
         console.warn('Push task failed:', error.message)
         return false
       }
     } else if (type === 'projectNote') {
-      const row = toProjectNoteRow(entity as ProjectNote, userId)
+      const row = toProjectNoteRow(entity as ProjectNote, uid)
       const { error } = await client.from('project_notes').upsert(row)
       if (error) {
         console.warn('Push projectNote failed:', error.message)
         return false
       }
     } else {
-      const row = toNoteRow(entity as Note, userId)
+      const row = toNoteRow(entity as Note, uid)
       const { error } = await client.from('notes').upsert(row)
       if (error) {
         console.warn('Push note failed:', error.message)
@@ -114,28 +94,45 @@ const doUpsert = async (type: 'task' | 'projectNote' | 'note', entity: Task | Pr
   }
 }
 
-// Serialized fire-and-forget: each push waits for the previous one to complete,
-// preventing out-of-order writes to the same entity from network latency.
 export const pushEntity = (type: 'task' | 'projectNote' | 'note', entity: Task | ProjectNote | Note): void => {
-  if (!net.isOnline() || !getAuthStatus().isSignedIn) return
-  pushChain = pushChain.then(async () => {
-    const ok = await doUpsert(type, entity)
-    if (ok) {
-      dirtyIds.delete(entity.id)
-      if (dirtyIds.size === 0) setSyncStatus('synced')
-    } else {
-      dirtyIds.add(entity.id)
-      setSyncStatus('error')
-      maybeCheckAuth()
-    }
+  if (!getAuthStatus().isSignedIn) return
+
+  // Check connectivity asynchronously — fire and forget
+  NetInfo.fetch().then((state) => {
+    if (!state.isConnected) return
+    pushChain = pushChain.then(async () => {
+      await doUpsert(type, entity)
+    })
   })
 }
 
-export const getDirtyCount = (): number => dirtyIds.size
-
 // --- Pull ---
 
-const pullInternal = async (): Promise<void> => {
+const mergeProjectNotes = (local: ProjectNote[], remote: ProjectNote[]): ProjectNote[] | undefined => {
+  const merged: ProjectNote[] = []
+  const seenIds = new Set<string>()
+
+  for (const ln of local) {
+    seenIds.add(ln.id)
+    const rn = remote.find((r) => r.id === ln.id)
+    if (rn && rn.updatedAt >= ln.updatedAt) {
+      merged.push(rn)
+    } else {
+      merged.push(ln)
+    }
+  }
+
+  for (const rn of remote) {
+    if (!seenIds.has(rn.id)) merged.push(rn)
+  }
+
+  return merged.length > 0 ? merged : undefined
+}
+
+export const pull = async (): Promise<void> => {
+  const netState = await NetInfo.fetch()
+  if (!netState.isConnected || !getAuthStatus().isSignedIn) return
+
   setSyncStatus('syncing')
 
   try {
@@ -172,7 +169,7 @@ const pullInternal = async (): Promise<void> => {
 
     await enqueue(() => {
       // --- Merge tasks ---
-      const localTasks = taskOps.getAllTasksRaw()
+      const localTasks = getAllTasksRaw()
       const mergedTasks: Task[] = []
       const seenTaskIds = new Set<string>()
 
@@ -200,10 +197,10 @@ const pullInternal = async (): Promise<void> => {
         }
       }
 
-      taskOps.replaceCache(mergedTasks)
+      replaceTaskCache(mergedTasks)
 
       // --- Merge notes ---
-      const localNotes = noteOps.getAllNotesRaw()
+      const localNotes = getAllNotesRaw()
       const mergedNotes: Note[] = []
       const seenNoteIds = new Set<string>()
 
@@ -218,16 +215,12 @@ const pullInternal = async (): Promise<void> => {
       }
 
       for (const remote of remoteNotes) {
-        if (!seenNoteIds.has(remote.id)) {
-          mergedNotes.push(remote)
-        }
+        if (!seenNoteIds.has(remote.id)) mergedNotes.push(remote)
       }
 
-      noteOps.replaceCache(mergedNotes)
+      replaceNoteCache(mergedNotes)
     })
 
-    broadcastTaskChange()
-    broadcastNotesChange()
     setSyncStatus('synced')
   } catch (err) {
     console.warn('Pull error:', err)
@@ -235,32 +228,17 @@ const pullInternal = async (): Promise<void> => {
   }
 }
 
-export const pull = async (): Promise<void> => {
-  if (!net.isOnline() || !getAuthStatus().isSignedIn) return
-  if (syncLock) return
-
-  syncLock = true
-  try {
-    await pullInternal()
-  } finally {
-    syncLock = false
-  }
-}
-
 // --- Dirty Push + Pull ---
 
-export const syncDirtyAndPull = async (): Promise<void> => {
-  if (!net.isOnline() || !getAuthStatus().isSignedIn) return
-  if (syncLock) return
+const syncDirtyAndPull = async (): Promise<void> => {
+  const netState = await NetInfo.fetch()
+  if (!netState.isConnected || !getAuthStatus().isSignedIn) return
 
-  syncLock = true
+  setSyncStatus('syncing')
+  let hadFailures = false
+
   try {
-    setSyncStatus('syncing')
-
-    let hadFailures = false
-
-    // Push dirty tasks and their project notes
-    const allTasks = taskOps.getAllTasksRaw()
+    const allTasks = getAllTasksRaw()
     for (const task of allTasks) {
       if (task.updatedAt > lastSyncedAt) {
         if (!(await doUpsert('task', task))) hadFailures = true
@@ -272,88 +250,78 @@ export const syncDirtyAndPull = async (): Promise<void> => {
       }
     }
 
-    // Push dirty notes
-    const allNotes = noteOps.getAllNotesRaw()
+    const allNotes = getAllNotesRaw()
     for (const note of allNotes) {
       if (note.updatedAt > lastSyncedAt) {
         if (!(await doUpsert('note', note))) hadFailures = true
       }
     }
 
-    // Pull remote changes
-    await pullInternal()
+    await pull()
 
-    // Only advance watermark if every push succeeded
     if (!hadFailures) {
-      dirtyIds.clear()
       lastSyncedAt = Date.now()
-      saveMeta()
+      await saveMeta()
     }
   } catch (err) {
     console.warn('Dirty sync error:', err)
     setSyncStatus('error')
-  } finally {
-    syncLock = false
   }
 }
 
-// --- Project Note Merge ---
+// --- Lifecycle ---
 
-const mergeProjectNotes = (local: ProjectNote[], remote: ProjectNote[]): ProjectNote[] | undefined => {
-  const merged: ProjectNote[] = []
-  const seenIds = new Set<string>()
+let unsubscribeNetInfo: (() => void) | null = null
+let appStateSubscription: { remove: () => void } | null = null
 
-  for (const ln of local) {
-    seenIds.add(ln.id)
-    const rn = remote.find((r) => r.id === ln.id)
-    if (rn && rn.updatedAt >= ln.updatedAt) {
-      merged.push(rn)
-    } else {
-      merged.push(ln)
-    }
-  }
-
-  for (const rn of remote) {
-    if (!seenIds.has(rn.id)) {
-      merged.push(rn)
-    }
-  }
-
-  return merged.length > 0 ? merged : undefined
-}
-
-// --- Connectivity Polling ---
-
-const pollConnectivity = (): void => {
-  const isOnline = net.isOnline()
-
-  if (isOnline && !wasOnline && getAuthStatus().isSignedIn) {
-    syncDirtyAndPull()
-  }
-
-  if (isOnline !== wasOnline) {
-    wasOnline = isOnline
-    if (!isOnline) setSyncStatus('offline')
-  }
-}
-
-// --- Initialization ---
-
-export const initSync = (userDataPath: string, enqueueFn: <T>(fn: () => T) => Promise<T>): void => {
-  metaFilePath = path.join(userDataPath, 'sync-meta.json')
-  enqueue = enqueueFn
+export const initSync = (deps: {
+  getAllTasksRaw: () => Task[]
+  replaceTaskCache: (tasks: Task[]) => void
+  getAllNotesRaw: () => Note[]
+  replaceNoteCache: (notes: Note[]) => void
+  enqueue: <T>(fn: () => T) => Promise<T>
+}): void => {
+  getAllTasksRaw = deps.getAllTasksRaw
+  replaceTaskCache = deps.replaceTaskCache
+  getAllNotesRaw = deps.getAllNotesRaw
+  replaceNoteCache = deps.replaceNoteCache
+  enqueue = deps.enqueue
   pushChain = Promise.resolve()
-  syncLock = false
-  dirtyIds.clear()
-  lastAuthCheckAt = 0
+
   loadMeta()
 
-  wasOnline = net.isOnline()
-  if (!wasOnline) setSyncStatus('offline')
-
-  app.on('browser-window-focus', () => {
-    pull()
+  // Sync on app foreground: push dirty entities then pull.
+  // Using syncDirtyAndPull instead of just pull ensures that transient
+  // online push failures get retried on every focus, not only on
+  // offline→online transitions.
+  appStateSubscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+    if (nextState === 'active') syncDirtyAndPull()
   })
 
-  setInterval(pollConnectivity, CONNECTIVITY_POLL_MS)
+  // Connectivity monitoring (equivalent to Electron's net.isOnline polling)
+  unsubscribeNetInfo = NetInfo.addEventListener((state) => {
+    const isOnline = !!state.isConnected
+
+    if (isOnline && !wasOnline && getAuthStatus().isSignedIn) {
+      syncDirtyAndPull()
+    }
+
+    if (isOnline !== wasOnline) {
+      wasOnline = isOnline
+      if (!isOnline) setSyncStatus('offline')
+    }
+  })
+
+  // Check initial connectivity
+  NetInfo.fetch().then((state) => {
+    wasOnline = !!state.isConnected
+    if (!wasOnline) setSyncStatus('offline')
+  })
+}
+
+export const teardownSync = (): void => {
+  unsubscribeNetInfo?.()
+  unsubscribeNetInfo = null
+  appStateSubscription?.remove()
+  appStateSubscription = null
 }

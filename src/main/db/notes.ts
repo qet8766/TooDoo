@@ -3,7 +3,7 @@ import type { Note } from '@shared/types'
 import type { Result } from '@shared/result'
 import { ok, fail } from '@shared/result'
 import { validateId, validateNoteFields, sanitizeNotes } from '@shared/validation'
-import { readJsonFile, writeJsonFile } from './store'
+import { readJsonFile, writeJsonFile, type StoreError } from './store'
 
 // --- In-Memory Cache ---
 
@@ -12,8 +12,8 @@ let filePath = ''
 
 // --- Persistence ---
 
-const persist = (): void => {
-  writeJsonFile(filePath, cache)
+const persist = (): StoreError | undefined => {
+  return writeJsonFile(filePath, cache)
 }
 
 // --- Initialization ---
@@ -89,6 +89,11 @@ export const getAllNotesRaw = (): Note[] => [...cache]
 export const getNoteById = (id: string): Note | undefined => cache.find((n) => n.id === id)
 
 export const replaceCache = (notes: Note[]): void => {
+  const prev = cache
   cache = notes
-  persist()
+  const err = persist()
+  if (err) {
+    cache = prev
+    console.error('replaceCache rollback: disk write failed, reverting in-memory cache')
+  }
 }

@@ -105,7 +105,7 @@ Port TooDoo to React Native Android and add Supabase as a shared backend for cro
 - [ ] Switch focus away and back → pulls latest from Supabase
 - [ ] Disconnect network → make changes → reconnect → dirty entities push, then pull
 - [ ] Offline project-note delete → reconnect → deletion syncs to Supabase (tombstone sent)
-- [x] `npm run test` — all tests pass (162/162)
+- [x] `npm run test` — all tests pass (165/165)
 - [x] `npm run build` succeeds
 - [x] `npm run lint` — no errors
 
@@ -151,15 +151,18 @@ Port TooDoo to React Native Android and add Supabase as a shared backend for cro
 
 ### Verification
 
-- [ ] `cd mobile && npx react-native run-android` — app builds and launches
+- [x] `cd mobile && ./gradlew assembleDebug` — APK builds successfully (176 MB debug)
 - [ ] Navigation works: tabs switch, placeholder screens show
 - [ ] Dark theme applied, Space Grotesk font renders
-- [ ] Shared types import without errors
+- [x] Shared types import without errors
 - [ ] Sign in on mobile → data pulled from Supabase
 - [ ] Create task on mobile → appears in Supabase dashboard
 - [ ] Create task on Electron → switch to mobile → appears after focus pull
 - [ ] Kill app → reopen → data persisted locally
 - [ ] Airplane mode → create task → re-enable → syncs
+- [x] `npx tsc --noEmit` — zero TypeScript errors in mobile project
+- [x] `npm run test` in root — all Electron tests pass (165/165)
+- [x] `npm run build` in root — Electron build succeeds
 
 ---
 
@@ -246,6 +249,6 @@ Port TooDoo to React Native Android and add Supabase as a shared backend for cro
 ## Current Progress
 
 - [x] **Gate 1** — Foundation (Supabase + shared types + soft delete + fractional sort)
-- [ ] **Gate 2** — Electron Sync
-- [ ] **Gate 3** — Mobile Foundation (scaffold + data layer)
+- [x] **Gate 2** — Electron Sync (auth, push-on-mutate, pull-on-focus, server timestamps)
+- [~] **Gate 3** — Mobile Foundation (scaffold + data layer) — code complete, needs Android SDK for device testing
 - [ ] **Gate 4** — Mobile Screens (tasks + calendar + notes + polish)

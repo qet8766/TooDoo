@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TooDoo is an always-on-top Electron desktop overlay for task management with global hotkey quick-add popups. It uses a heat-based priority system (scorching > hot > warm > cool) for manual prioritization, plus a separate "Timed" category for deadline-based tasks with D-day markers. Includes a secondary "Notetank" notes feature.
 
+**Single-user app.** This app is built for personal use by a single person. There is only one Supabase auth account, no registration flow, no multi-tenancy, and no account-switching. Do not design for multi-user scenarios, cross-account data isolation, or user management. Auth exists solely to authenticate with Supabase for cross-device sync.
+
 ## Commands
 
 ```bash
@@ -58,7 +60,7 @@ Local JSON files stored in `app.getPath('userData')/data/` (`tasks.json`, `notes
 - `tasks.ts` - Task + ProjectNote domain logic and in-memory cache
 - `notes.ts` - Note domain logic and in-memory cache
 - `queue.ts` - Async operation serializer (ensures no concurrent mutations)
-- `database.ts` - Thin facade: init orchestration and queue-wrapped re-exports
+- `database.ts` - Thin facade: init orchestration, queue-wrapped re-exports, sync push after each mutation
 
 All mutating operations return `Result<T>` (from `src/shared/result.ts`) -- a discriminated union `{ success: true, data: T } | { success: false, error: string }`. Renderers check `result.success` to narrow the type. Validation rules live in `src/shared/validation.ts` for reuse across processes. Data loaded from disk is sanitized via `sanitizeTasks()`/`sanitizeNotes()` to handle schema drift and corruption.
 
@@ -70,11 +72,28 @@ All entities (Task, ProjectNote, Note) use soft delete via a `deletedAt?: number
 
 Tasks use fractional string-based sort ordering via the `fractional-indexing` library. `sortOrder` is a `string` (not a number). Adding or reordering a task only modifies that single task's `sortOrder` -- no other tasks in the category are touched. Keys compare correctly with raw `<`/`>` string comparison (do NOT use `localeCompare`). Legacy numeric `sortOrder` values are auto-migrated to fractional keys on first load via `sanitizeTasks()`.
 
-### Supabase (sync-ready)
+### Supabase Sync
 
-Supabase project: `envrmnyjyxwqhmfpvajd`. Schema in `supabase/migrations/001_initial_schema.sql`. Three tables (`tasks`, `project_notes`, `notes`) with RLS policies filtering by `auth.uid() = user_id`. Timezone set to `Asia/Seoul`.
+Supabase project: `envrmnyjyxwqhmfpvajd`. Schema in `supabase/migrations/`. Three tables (`tasks`, `project_notes`, `notes`) with RLS policies filtering by `auth.uid() = user_id`. Timezone set to `Asia/Seoul`. Single auth user (`qet8766@naver.com`).
 
-- `src/shared/supabase-types.ts` - Postgres row types (snake_case) + bidirectional mapper functions (`toTaskRow`/`fromTaskRow`, etc.)
+**Sync modules** under `src/main/db/sync/`:
+
+- `supabase.ts` - Client singleton, email/password auth, session persistence to `{userData}/auth-session.json`
+- `sync.ts` - Push-on-mutate (serialized promise chain), pull-on-focus (merge by `updatedAt`), dirty-push-on-reconnect with watermark tracking (`sync-meta.json`)
+
+**Sync behavior:**
+
+- Every local mutation in `database.ts` calls `pushEntity()` which serializes upserts through a promise chain -- local operations never block on network
+- Window focus triggers `pull()` which fetches all remote data, merges (newer `updatedAt` wins, ties go to remote), and replaces the local cache inside the mutation queue
+- On reconnect (offline→online), `syncDirtyAndPull()` pushes entities where `updatedAt > lastSyncedAt`, then pulls. Watermark only advances if all pushes succeed -- failed entities stay dirty for retry
+- Server-side `BEFORE INSERT OR UPDATE` trigger (`002_server_timestamps.sql`) overrides `updated_at` with `now()`, making merge resolution clock-independent across devices
+- Connectivity detected via `net.isOnline()` polling every 30s
+
+**Auth/sync IPC:** `auth:sign-in`, `auth:sign-out`, `auth:status`, `auth:status-changed`, `sync:status`, `sync:status-changed` -- exposed via `window.toodoo.auth.*` / `window.toodoo.sync.*`
+
+**Type mappers** in `src/shared/supabase-types.ts`:
+
+- Postgres row types (snake_case) + bidirectional mapper functions (`toTaskRow`/`fromTaskRow`, etc.)
 - Mappers handle: camelCase/snake_case, Unix ms/ISO timestamps, undefined/null conversion
 - `scheduledDate` uses local (KST) midnight -- mappers use local date methods, not UTC
 

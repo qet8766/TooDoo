@@ -101,5 +101,5 @@ export type AuthStatusPayload = {
 
 // Sync payload types
 export type SyncStatusPayload = {
-  status: 'synced' | 'syncing' | 'offline' | 'error'
+  status: 'synced' | 'syncing' | 'offline' | 'error' | 'auth-expired'
 }

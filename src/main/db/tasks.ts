@@ -3,7 +3,7 @@ import type { ProjectNote, Task, TaskCategory } from '@shared/types'
 import type { Result } from '@shared/result'
 import { ok, fail } from '@shared/result'
 import { validateId, validateTaskFields, validateProjectNoteFields, sanitizeTasks } from '@shared/validation'
-import { readJsonFile, writeJsonFile } from './store'
+import { readJsonFile, writeJsonFile, type StoreError } from './store'
 import { generateKeyBetween } from 'fractional-indexing'
 
 // --- In-Memory Cache ---
@@ -13,8 +13,8 @@ let filePath = ''
 
 // --- Persistence ---
 
-const persist = (): void => {
-  writeJsonFile(filePath, cache)
+const persist = (): StoreError | undefined => {
+  return writeJsonFile(filePath, cache)
 }
 
 // --- Initialization ---
@@ -241,6 +241,11 @@ export const getAllTasksRaw = (): Task[] => [...cache]
 export const getTaskById = (id: string): Task | undefined => cache.find((t) => t.id === id)
 
 export const replaceCache = (tasks: Task[]): void => {
+  const prev = cache
   cache = tasks
-  persist()
+  const err = persist()
+  if (err) {
+    cache = prev
+    console.error('replaceCache rollback: disk write failed, reverting in-memory cache')
+  }
 }

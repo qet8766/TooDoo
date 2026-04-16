@@ -774,6 +774,11 @@ a {
   background: #f87171;
 }
 
+.sync-auth-expired {
+  background: #f87171;
+  animation: sync-pulse 0.8s infinite;
+}
+
 @keyframes sync-pulse {
   0%,
   100% {
