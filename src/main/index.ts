@@ -7,6 +7,7 @@ import {
   deleteTask,
   getTasks,
   initDatabase,
+  enqueueSync,
   updateTask,
   updateProjectNote,
   reorderTask,
@@ -16,7 +17,9 @@ import {
   deleteNote,
 } from './db/database'
 import { app, BrowserWindow, ipcMain } from './electron'
-import { IPC } from '@shared/ipc'
+import { IPC, type AuthSignInPayload } from '@shared/ipc'
+import { initSupabase, restoreSession, signIn, signOut, getAuthStatus } from './db/sync/supabase'
+import { initSync, getSyncStatus, syncDirtyAndPull } from './db/sync/sync'
 import {
   configureRendererTarget,
   createTooDooOverlay,
@@ -91,6 +94,19 @@ const bootstrap = async () => {
   // Initialize database (loads local JSON files)
   await initDatabase()
 
+  // Initialize Supabase client and attempt session restore
+  const userDataPath = app.getPath('userData')
+  initSupabase(userDataPath)
+  const sessionRestored = await restoreSession()
+
+  // Initialize sync engine (wires focus listener, starts connectivity polling)
+  initSync(userDataPath, enqueueSync)
+
+  // If session was restored, do an initial sync
+  if (sessionRestored) {
+    syncDirtyAndPull()
+  }
+
   // Now show the main overlay and register shortcuts
   createTooDooOverlay()
   manageShortcuts('register')
@@ -115,6 +131,12 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   manageShortcuts('unregister')
 })
+
+// --- Auth & Sync Handlers ---
+handleSimple(IPC.AUTH_SIGN_IN, (p: AuthSignInPayload) => signIn(p.email, p.password))
+handleSimple(IPC.AUTH_SIGN_OUT, () => signOut())
+handleSimple(IPC.AUTH_STATUS, () => getAuthStatus())
+handleSimple(IPC.SYNC_STATUS, () => ({ status: getSyncStatus() }))
 
 // --- Task Handlers ---
 handleSimple(IPC.TASKS_LIST, getTasks)

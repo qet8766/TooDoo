@@ -62,6 +62,22 @@ Local JSON files stored in `app.getPath('userData')/data/` (`tasks.json`, `notes
 
 All mutating operations return `Result<T>` (from `src/shared/result.ts`) -- a discriminated union `{ success: true, data: T } | { success: false, error: string }`. Renderers check `result.success` to narrow the type. Validation rules live in `src/shared/validation.ts` for reuse across processes. Data loaded from disk is sanitized via `sanitizeTasks()`/`sanitizeNotes()` to handle schema drift and corruption.
 
+### Soft Delete
+
+All entities (Task, ProjectNote, Note) use soft delete via a `deletedAt?: number` timestamp field. Deletion sets `deletedAt = Date.now()` instead of removing the record. `getTasks()` and `getNotes()` filter out deleted items so the UI is unchanged, but tombstones remain in the JSON file for future sync. Mutating functions (`updateTask`, `addProjectNote`, `reorderTask`) guard against operating on soft-deleted records.
+
+### Sort Order
+
+Tasks use fractional string-based sort ordering via the `fractional-indexing` library. `sortOrder` is a `string` (not a number). Adding or reordering a task only modifies that single task's `sortOrder` -- no other tasks in the category are touched. Keys compare correctly with raw `<`/`>` string comparison (do NOT use `localeCompare`). Legacy numeric `sortOrder` values are auto-migrated to fractional keys on first load via `sanitizeTasks()`.
+
+### Supabase (sync-ready)
+
+Supabase project: `envrmnyjyxwqhmfpvajd`. Schema in `supabase/migrations/001_initial_schema.sql`. Three tables (`tasks`, `project_notes`, `notes`) with RLS policies filtering by `auth.uid() = user_id`. Timezone set to `Asia/Seoul`.
+
+- `src/shared/supabase-types.ts` - Postgres row types (snake_case) + bidirectional mapper functions (`toTaskRow`/`fromTaskRow`, etc.)
+- Mappers handle: camelCase/snake_case, Unix ms/ISO timestamps, undefined/null conversion
+- `scheduledDate` uses local (KST) midnight -- mappers use local date methods, not UTC
+
 ### Timed Tasks
 
 The "Timed" category (violet, formerly "Project") holds deadline-based tasks. Tasks created from the calendar go here automatically. Timed tasks are sorted by deadline (soonest first) and display D-day markers (D-7, D-1, D-Day, D+1...). The D-day calculation lives in `src/shared/category-calculator.ts`. Timed tasks never mix into heat categories -- they always stay in their own section. The quick-add for timed tasks (Alt+Shift+T) includes a date picker.

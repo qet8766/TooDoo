@@ -32,7 +32,7 @@ export const init = (dataDir: string): void => {
 
 // --- Notes ---
 
-export const getNotes = (): Note[] => cache
+export const getNotes = (): Note[] => cache.filter((n) => !n.deletedAt)
 
 export const addNote = (p: { id: string; title: string; content: string }): Result<Note> => {
   const idErr = validateId(p.id)
@@ -62,7 +62,7 @@ export const updateNote = (p: { id: string; title?: string; content?: string }):
   if (fieldErr) return fail(fieldErr)
 
   const existing = cache.find((n) => n.id === p.id)
-  if (!existing) return ok(null)
+  if (!existing || existing.deletedAt) return ok(null)
 
   const updated: Note = {
     ...existing,
@@ -77,6 +77,18 @@ export const updateNote = (p: { id: string; title?: string; content?: string }):
 }
 
 export const deleteNote = (id: string): void => {
-  cache = cache.filter((n) => n.id !== id)
+  const now = Date.now()
+  cache = cache.map((n) => (n.id === id ? { ...n, deletedAt: now, updatedAt: now } : n))
+  persist()
+}
+
+// --- Sync Helpers ---
+
+export const getAllNotesRaw = (): Note[] => [...cache]
+
+export const getNoteById = (id: string): Note | undefined => cache.find((n) => n.id === id)
+
+export const replaceCache = (notes: Note[]): void => {
+  cache = notes
   persist()
 }

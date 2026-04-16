@@ -10,6 +10,9 @@ import {
   type TaskCreatePayload,
   type TaskUpdatePayload,
   type TaskReorderPayload,
+  type AuthSignInPayload,
+  type AuthStatusPayload,
+  type SyncStatusPayload,
 } from '@shared/ipc'
 
 // Tasks API
@@ -76,6 +79,31 @@ const setCalendarOpen = (isOpen: boolean) => ipcRenderer.send(IPC.WINDOW_SET_CAL
 const resizeWindow = (deltaWidth: number, deltaHeight: number) =>
   ipcRenderer.send(IPC.WINDOW_RESIZE, deltaWidth, deltaHeight)
 
+// Auth API
+const authApi = {
+  signIn: (payload: AuthSignInPayload) =>
+    ipcRenderer.invoke(IPC.AUTH_SIGN_IN, payload) as Promise<Result<{ userId: string }>>,
+  signOut: () => ipcRenderer.invoke(IPC.AUTH_SIGN_OUT) as Promise<Result<void>>,
+  getStatus: () => ipcRenderer.invoke(IPC.AUTH_STATUS) as Promise<AuthStatusPayload>,
+}
+
+const onAuthStatusChanged = (callback: (status: AuthStatusPayload) => void): (() => void) => {
+  const handler = (_event: unknown, status: AuthStatusPayload) => callback(status)
+  ipcRenderer.on(IPC.AUTH_STATUS_CHANGED, handler)
+  return () => ipcRenderer.removeListener(IPC.AUTH_STATUS_CHANGED, handler)
+}
+
+// Sync API
+const syncApi = {
+  getStatus: () => ipcRenderer.invoke(IPC.SYNC_STATUS) as Promise<SyncStatusPayload>,
+}
+
+const onSyncStatusChanged = (callback: (status: SyncStatusPayload) => void): (() => void) => {
+  const handler = (_event: unknown, status: SyncStatusPayload) => callback(status)
+  ipcRenderer.on(IPC.SYNC_STATUS_CHANGED, handler)
+  return () => ipcRenderer.removeListener(IPC.SYNC_STATUS_CHANGED, handler)
+}
+
 // Exposed API
 const api = {
   tasks: tasksApi,
@@ -83,6 +111,10 @@ const api = {
   notes: notesApi,
   onNotesChanged,
   noteEditor: noteEditorApi,
+  auth: authApi,
+  onAuthStatusChanged,
+  sync: syncApi,
+  onSyncStatusChanged,
   switchView,
   setMinimized,
   setCalendarOpen,

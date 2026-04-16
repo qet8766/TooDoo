@@ -10,6 +10,13 @@ const NotetankOverlay = () => {
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set())
   const { fontSize, handleFontSizeChange } = useFontSize('notetank-font-size')
   const { armedForDelete, armForDelete, disarmDelete } = useDeleteArm()
+  const [syncStatus, setSyncStatus] = useState<string>('offline')
+
+  useEffect(() => {
+    window.toodoo.sync.getStatus().then((s) => setSyncStatus(s.status))
+    const unsub = window.toodoo.onSyncStatusChanged((s) => setSyncStatus(s.status))
+    return unsub
+  }, [])
 
   const fetchNotes = useCallback(async () => {
     setIsLoading(true)
@@ -82,6 +89,7 @@ const NotetankOverlay = () => {
           </button>
         </div>
         <div className="topbar-controls no-drag">
+          <span className={`sync-dot sync-${syncStatus}`} title={`Sync: ${syncStatus}`} />
           <button className="font-btn" onClick={() => handleFontSizeChange(-1)}>
             A-
           </button>

@@ -4,6 +4,7 @@ import type { Result } from '@shared/result'
 import { ok, fail } from '@shared/result'
 import { validateId, validateTaskFields, validateProjectNoteFields, sanitizeTasks } from '@shared/validation'
 import { readJsonFile, writeJsonFile } from './store'
+import { generateKeyBetween } from 'fractional-indexing'
 
 // --- In-Memory Cache ---
 
@@ -40,9 +41,20 @@ const findTaskByProjectNote = (noteId: string): { task: Task; note: ProjectNote 
   return null
 }
 
+const activeCategoryTasks = (category: TaskCategory): Task[] =>
+  cache
+    .filter((t) => t.category === category && !t.deletedAt)
+    .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0))
+
+const firstSortKey = (category: TaskCategory): string | null => {
+  const tasks = activeCategoryTasks(category)
+  return tasks.length > 0 ? tasks[0].sortOrder : null
+}
+
 // --- Tasks ---
 
-export const getTasks = (): Task[] => cache
+export const getTasks = (): Task[] =>
+  cache.filter((t) => !t.deletedAt).map((t) => ({ ...t, projectNotes: t.projectNotes?.filter((n) => !n.deletedAt) }))
 
 export const addTask = (p: {
   id: string
@@ -62,8 +74,8 @@ export const addTask = (p: {
   if (fieldErr) return fail(fieldErr)
 
   const now = Date.now()
+  const sortKey = generateKeyBetween(null, firstSortKey(p.category))
 
-  // New tasks get sortOrder 0 (top of list), existing tasks shift down
   const task: Task = {
     id: p.id,
     title: p.title.trim(),
@@ -74,10 +86,10 @@ export const addTask = (p: {
     isDone: p.isDone ?? false,
     createdAt: now,
     updatedAt: now,
-    sortOrder: 0,
+    sortOrder: sortKey,
   }
 
-  cache = [task, ...cache.map((t) => (t.category === task.category ? { ...t, sortOrder: (t.sortOrder ?? 0) + 1 } : t))]
+  cache = [task, ...cache]
 
   persist()
   return ok(task)
@@ -96,7 +108,7 @@ export const updateTask = (p: {
   if (fieldErr) return fail(fieldErr)
 
   const existing = cache.find((t) => t.id === p.id)
-  if (!existing) return ok(null)
+  if (!existing || existing.deletedAt) return ok(null)
 
   const now = Date.now()
 
@@ -114,51 +126,39 @@ export const updateTask = (p: {
     scheduledTime: newScheduledTime,
     isDone: p.isDone ?? existing.isDone,
     updatedAt: now,
-    sortOrder: categoryChanged ? 0 : (existing.sortOrder ?? 0),
+    sortOrder: categoryChanged ? generateKeyBetween(null, firstSortKey(newCategory)) : existing.sortOrder,
   }
 
-  if (categoryChanged) {
-    cache = cache.map((t) => {
-      if (t.id === p.id) return updated
-      if (t.category === newCategory) return { ...t, sortOrder: (t.sortOrder ?? 0) + 1 }
-      return t
-    })
-  } else {
-    cache = cache.map((t) => (t.id === p.id ? updated : t))
-  }
+  cache = cache.map((t) => (t.id === p.id ? updated : t))
 
   persist()
   return ok(updated)
 }
 
 export const reorderTask = (taskId: string, targetIndex: number): boolean => {
-  const task = cache.find((t) => t.id === taskId)
+  const task = cache.find((t) => t.id === taskId && !t.deletedAt)
   if (!task) return false
 
-  const categoryTasks = cache
-    .filter((t) => t.category === task.category)
-    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-
-  const currentIndex = categoryTasks.findIndex((t) => t.id === taskId)
+  const sorted = activeCategoryTasks(task.category)
+  const currentIndex = sorted.findIndex((t) => t.id === taskId)
   if (currentIndex === -1 || currentIndex === targetIndex) return false
 
-  categoryTasks.splice(currentIndex, 1)
-  categoryTasks.splice(targetIndex, 0, task)
+  // Remove current task to compute neighbors at target position
+  const withoutCurrent = sorted.filter((t) => t.id !== taskId)
+  const before = targetIndex > 0 ? withoutCurrent[targetIndex - 1].sortOrder : null
+  const after = targetIndex < withoutCurrent.length ? withoutCurrent[targetIndex].sortOrder : null
+  const newKey = generateKeyBetween(before, after)
 
   const now = Date.now()
-  cache = cache.map((t) => {
-    if (t.category !== task.category) return t
-    const idx = categoryTasks.findIndex((ct) => ct.id === t.id)
-    if (idx === -1) return t
-    return { ...t, sortOrder: idx, updatedAt: now }
-  })
+  cache = cache.map((t) => (t.id === taskId ? { ...t, sortOrder: newKey, updatedAt: now } : t))
 
   persist()
   return true
 }
 
 export const deleteTask = (id: string): void => {
-  cache = cache.filter((t) => t.id !== id)
+  const now = Date.now()
+  cache = cache.map((t) => (t.id === id ? { ...t, deletedAt: now, updatedAt: now } : t))
   persist()
 }
 
@@ -172,7 +172,7 @@ export const addProjectNote = (p: { id: string; taskId: string; content: string 
   if (fieldErr) return fail(fieldErr)
 
   const task = cache.find((t) => t.id === p.taskId)
-  if (!task) return fail('Task not found')
+  if (!task || task.deletedAt) return fail('Task not found')
 
   const now = Date.now()
   const note: ProjectNote = {
@@ -199,7 +199,7 @@ export const updateProjectNote = (p: { id: string; content: string }): Result<Pr
   if (fieldErr) return fail(fieldErr)
 
   const found = findTaskByProjectNote(p.id)
-  if (!found) return ok(null)
+  if (!found || found.note.deletedAt) return ok(null)
 
   const now = Date.now()
   const updated: ProjectNote = {
@@ -226,10 +226,21 @@ export const deleteProjectNote = (id: string): void => {
   const now = Date.now()
   const updatedTask: Task = {
     ...found.task,
-    projectNotes: found.task.projectNotes?.filter((n) => n.id !== id),
+    projectNotes: found.task.projectNotes?.map((n) => (n.id === id ? { ...n, deletedAt: now, updatedAt: now } : n)),
     updatedAt: now,
   }
 
   cache = cache.map((t) => (t.id === found.task.id ? updatedTask : t))
+  persist()
+}
+
+// --- Sync Helpers ---
+
+export const getAllTasksRaw = (): Task[] => [...cache]
+
+export const getTaskById = (id: string): Task | undefined => cache.find((t) => t.id === id)
+
+export const replaceCache = (tasks: Task[]): void => {
+  cache = tasks
   persist()
 }

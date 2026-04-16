@@ -77,6 +77,9 @@ vi.mock('electron', () => ({
       workAreaSize: { width: 1920, height: 1080 },
     })),
   },
+  net: {
+    isOnline: vi.fn(() => true),
+  },
 }))
 
 // Mock fs for database tests

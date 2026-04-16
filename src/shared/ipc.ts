@@ -18,6 +18,14 @@ export const IPC = {
   NOTES_UPDATE: 'notes:update',
   NOTES_DELETE: 'notes:delete',
   NOTES_CHANGED: 'notes:changed',
+  // Auth
+  AUTH_SIGN_IN: 'auth:sign-in',
+  AUTH_SIGN_OUT: 'auth:sign-out',
+  AUTH_STATUS: 'auth:status',
+  AUTH_STATUS_CHANGED: 'auth:status-changed',
+  // Sync
+  SYNC_STATUS: 'sync:status',
+  SYNC_STATUS_CHANGED: 'sync:status-changed',
   // Window control
   QUICK_ADD_OPEN: 'quick-add:open',
   NOTE_EDITOR_OPEN: 'note-editor:open',
@@ -78,4 +86,20 @@ export type NoteUpdatePayload = {
 export type TaskReorderPayload = {
   taskId: string
   targetIndex: number
+}
+
+// Auth payload types
+export type AuthSignInPayload = {
+  email: string
+  password: string
+}
+
+export type AuthStatusPayload = {
+  isSignedIn: boolean
+  userId: string | null
+}
+
+// Sync payload types
+export type SyncStatusPayload = {
+  status: 'synced' | 'syncing' | 'offline' | 'error'
 }

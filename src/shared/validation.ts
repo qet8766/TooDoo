@@ -1,5 +1,6 @@
 import type { Note, ProjectNote, Task, TaskCategory } from './types'
 import { ALL_CATEGORIES } from './categories'
+import { generateNKeysBetween } from 'fractional-indexing'
 
 // --- Limits ---
 
@@ -79,6 +80,7 @@ const sanitizeProjectNote = (raw: unknown): ProjectNote | null => {
     content: n.content,
     createdAt: typeof n.createdAt === 'number' ? n.createdAt : Date.now(),
     updatedAt: typeof n.updatedAt === 'number' ? n.updatedAt : Date.now(),
+    deletedAt: typeof n.deletedAt === 'number' ? n.deletedAt : undefined,
   }
 }
 
@@ -104,12 +106,14 @@ export const sanitizeTask = (raw: unknown): Task | null => {
     isDone: typeof t.isDone === 'boolean' ? t.isDone : false,
     createdAt: typeof t.createdAt === 'number' ? t.createdAt : Date.now(),
     updatedAt: typeof t.updatedAt === 'number' ? t.updatedAt : Date.now(),
-    sortOrder: typeof t.sortOrder === 'number' ? t.sortOrder : 0,
+    sortOrder:
+      typeof t.sortOrder === 'string' ? t.sortOrder : typeof t.sortOrder === 'number' ? `\x00${t.sortOrder}` : 'a0',
     projectNotes: Array.isArray(t.projectNotes)
       ? (t.projectNotes as unknown[]).map(sanitizeProjectNote).filter((n): n is ProjectNote => n !== null)
       : undefined,
     scheduledDate: typeof t.scheduledDate === 'number' ? t.scheduledDate : undefined,
     scheduledTime: typeof t.scheduledTime === 'string' ? t.scheduledTime : undefined,
+    deletedAt: typeof t.deletedAt === 'number' ? t.deletedAt : undefined,
   }
 }
 
@@ -125,6 +129,7 @@ export const sanitizeNote = (raw: unknown): Note | null => {
     content: typeof n.content === 'string' ? n.content : '',
     createdAt: typeof n.createdAt === 'number' ? n.createdAt : Date.now(),
     updatedAt: typeof n.updatedAt === 'number' ? n.updatedAt : Date.now(),
+    deletedAt: typeof n.deletedAt === 'number' ? n.deletedAt : undefined,
   }
 }
 
@@ -137,6 +142,33 @@ export const sanitizeTasks = (raw: unknown): Task[] => {
     if (task) tasks.push(task)
     else console.warn('Dropped malformed task entry during load:', entry)
   }
+
+  // Migrate legacy numeric sortOrder to fractional string keys.
+  // sanitizeTask tags numeric values with a '\x00' prefix sentinel.
+  const needsMigration = tasks.some((t) => t.sortOrder.startsWith('\x00'))
+  if (needsMigration) {
+    const byCategory = new Map<TaskCategory, Task[]>()
+    for (const t of tasks) {
+      let list = byCategory.get(t.category)
+      if (!list) {
+        list = []
+        byCategory.set(t.category, list)
+      }
+      list.push(t)
+    }
+    for (const categoryTasks of byCategory.values()) {
+      categoryTasks.sort((a, b) => {
+        const aNum = a.sortOrder.startsWith('\x00') ? Number(a.sortOrder.slice(1)) : Infinity
+        const bNum = b.sortOrder.startsWith('\x00') ? Number(b.sortOrder.slice(1)) : Infinity
+        return aNum - bNum
+      })
+      const keys = generateNKeysBetween(null, null, categoryTasks.length)
+      categoryTasks.forEach((t, i) => {
+        t.sortOrder = keys[i]
+      })
+    }
+  }
+
   return tasks
 }
 

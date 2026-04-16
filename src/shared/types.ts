@@ -6,6 +6,7 @@ export interface ProjectNote {
   content: string
   createdAt: number
   updatedAt: number
+  deletedAt?: number
 }
 
 export interface Task {
@@ -16,11 +17,12 @@ export interface Task {
   isDone: boolean
   createdAt: number
   updatedAt: number
-  sortOrder: number
+  sortOrder: string
   projectNotes?: ProjectNote[]
   // Calendar scheduling fields
   scheduledDate?: number // Unix timestamp (midnight of scheduled date)
   scheduledTime?: string // "HH:MM" format, optional
+  deletedAt?: number
 }
 
 export interface Note {
@@ -29,4 +31,5 @@ export interface Note {
   content: string
   createdAt: number
   updatedAt: number
+  deletedAt?: number
 }

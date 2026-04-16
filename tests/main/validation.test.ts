@@ -159,7 +159,7 @@ describe('sanitizeTask', () => {
       isDone: false,
       createdAt: 1000,
       updatedAt: 2000,
-      sortOrder: 3,
+      sortOrder: 'b5',
     }
     const result = sanitizeTask(raw)
     expect(result).toEqual({
@@ -170,10 +170,11 @@ describe('sanitizeTask', () => {
       isDone: false,
       createdAt: 1000,
       updatedAt: 2000,
-      sortOrder: 3,
+      sortOrder: 'b5',
       projectNotes: undefined,
       scheduledDate: undefined,
       scheduledTime: undefined,
+      deletedAt: undefined,
     })
   })
 
@@ -181,8 +182,24 @@ describe('sanitizeTask', () => {
     const result = sanitizeTask({ id: 'x', title: 'T' })!
     expect(result.category).toBe('cool')
     expect(result.isDone).toBe(false)
-    expect(result.sortOrder).toBe(0)
+    expect(result.sortOrder).toBe('a0')
     expect(result.createdAt).toBeTypeOf('number')
+    expect(result.deletedAt).toBeUndefined()
+  })
+
+  it('should tag numeric sortOrder with migration sentinel', () => {
+    const result = sanitizeTask({ id: 'x', title: 'T', sortOrder: 5 })!
+    expect(result.sortOrder).toBe('\x005')
+  })
+
+  it('should preserve string sortOrder as-is', () => {
+    const result = sanitizeTask({ id: 'x', title: 'T', sortOrder: 'c3' })!
+    expect(result.sortOrder).toBe('c3')
+  })
+
+  it('should preserve deletedAt when present', () => {
+    const result = sanitizeTask({ id: 'x', title: 'T', deletedAt: 12345 })!
+    expect(result.deletedAt).toBe(12345)
   })
 
   it('should default invalid category to cool', () => {
@@ -209,6 +226,16 @@ describe('sanitizeTask', () => {
     expect(result.projectNotes).toHaveLength(1)
     expect(result.projectNotes![0].id).toBe('note-1')
   })
+
+  it('should preserve deletedAt on project notes', () => {
+    const raw = {
+      id: 'task-1',
+      title: 'T',
+      projectNotes: [{ id: 'note-1', taskId: 'task-1', content: 'Hello', createdAt: 1, updatedAt: 2, deletedAt: 999 }],
+    }
+    const result = sanitizeTask(raw)!
+    expect(result.projectNotes![0].deletedAt).toBe(999)
+  })
 })
 
 describe('sanitizeNote', () => {
@@ -230,12 +257,18 @@ describe('sanitizeNote', () => {
       content: 'Body',
       createdAt: 1,
       updatedAt: 2,
+      deletedAt: undefined,
     })
   })
 
   it('should default missing content to empty string', () => {
     const result = sanitizeNote({ id: 'n-1', title: 'T' })!
     expect(result.content).toBe('')
+  })
+
+  it('should preserve deletedAt when present', () => {
+    const result = sanitizeNote({ id: 'n-1', title: 'T', deletedAt: 42 })!
+    expect(result.deletedAt).toBe(42)
   })
 })
 
@@ -252,5 +285,44 @@ describe('sanitizeTasks / sanitizeNotes (batch)', () => {
     expect(result).toHaveLength(2)
     expect(result[0].id).toBe('task-1')
     expect(result[1].id).toBe('task-2')
+  })
+
+  it('should migrate numeric sortOrder to fractional string keys', () => {
+    const raw = [
+      { id: 't1', title: 'A', category: 'hot', sortOrder: 0 },
+      { id: 't2', title: 'B', category: 'hot', sortOrder: 1 },
+      { id: 't3', title: 'C', category: 'hot', sortOrder: 2 },
+    ]
+    const result = sanitizeTasks(raw)
+    // All sortOrders should be clean strings (no sentinel prefix)
+    for (const t of result) {
+      expect(t.sortOrder).toBeTypeOf('string')
+      expect(t.sortOrder.startsWith('\x00')).toBe(false)
+    }
+    // Order should be preserved: t1 < t2 < t3
+    expect(result.find((t) => t.id === 't1')!.sortOrder < result.find((t) => t.id === 't2')!.sortOrder).toBe(true)
+    expect(result.find((t) => t.id === 't2')!.sortOrder < result.find((t) => t.id === 't3')!.sortOrder).toBe(true)
+  })
+
+  it('should migrate numeric sortOrder per-category independently', () => {
+    const raw = [
+      { id: 't1', title: 'A', category: 'hot', sortOrder: 0 },
+      { id: 't2', title: 'B', category: 'warm', sortOrder: 0 },
+    ]
+    const result = sanitizeTasks(raw)
+    // Both should have clean string keys
+    for (const t of result) {
+      expect(t.sortOrder.startsWith('\x00')).toBe(false)
+    }
+  })
+
+  it('should not modify already-migrated string sortOrder', () => {
+    const raw = [
+      { id: 't1', title: 'A', category: 'hot', sortOrder: 'a0' },
+      { id: 't2', title: 'B', category: 'hot', sortOrder: 'a1' },
+    ]
+    const result = sanitizeTasks(raw)
+    expect(result.find((t) => t.id === 't1')!.sortOrder).toBe('a0')
+    expect(result.find((t) => t.id === 't2')!.sortOrder).toBe('a1')
   })
 })

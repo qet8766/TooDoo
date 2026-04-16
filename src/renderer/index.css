@@ -746,6 +746,51 @@ a {
   justify-content: flex-end;
 }
 
+/* Sync status dot */
+.sync-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 2px;
+  flex-shrink: 0;
+}
+
+.sync-synced {
+  background: #4ade80;
+  opacity: 0.7;
+}
+
+.sync-syncing {
+  background: #60a5fa;
+  animation: sync-pulse 1.5s infinite;
+}
+
+.sync-offline {
+  background: #6b7280;
+}
+
+.sync-error {
+  background: #f87171;
+}
+
+@keyframes sync-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Sign-in form */
+.sign-in-error {
+  color: #f87171;
+  font-size: 0.85em;
+  margin: 0;
+}
+
 .quick-add-shell {
   height: 100vh;
   padding: 14px;

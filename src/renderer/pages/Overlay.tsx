@@ -31,6 +31,11 @@ const TooDooOverlay = () => {
   const [isMinimized, setIsMinimized] = useState(false)
   const [minimizedAt, setMinimizedAt] = useState<number | null>(null)
   const [isCalendarOpen, setIsCalendarOpen] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<string>('offline')
+  const [showSignIn, setShowSignIn] = useState(false)
+  const [signInForm, setSignInForm] = useState({ email: '', password: '' })
+  const [signInError, setSignInError] = useState('')
+  const [signingIn, setSigningIn] = useState(false)
 
   // Notify main process when calendar opens/closes to resize window
   // Use a ref to track what we last sent to avoid duplicate IPC calls
@@ -101,6 +106,36 @@ const TooDooOverlay = () => {
     return () => clearInterval(interval)
   }, [isMinimized, minimizedAt, handleExpand])
 
+  // Sync + auth status
+  useEffect(() => {
+    window.toodoo.sync.getStatus().then((s) => setSyncStatus(s.status))
+    const unsub = window.toodoo.onSyncStatusChanged((s) => setSyncStatus(s.status))
+    return unsub
+  }, [])
+
+  useEffect(() => {
+    window.toodoo.auth.getStatus().then((status) => {
+      if (!status.isSignedIn) setShowSignIn(true)
+    })
+    const unsub = window.toodoo.onAuthStatusChanged((status) => {
+      if (status.isSignedIn) setShowSignIn(false)
+    })
+    return unsub
+  }, [])
+
+  const handleSignIn = async () => {
+    setSignInError('')
+    setSigningIn(true)
+    const result = await window.toodoo.auth.signIn(signInForm)
+    setSigningIn(false)
+    if (result.success) {
+      setShowSignIn(false)
+      setSignInForm({ email: '', password: '' })
+    } else {
+      setSignInError(result.error)
+    }
+  }
+
   const [dropTarget, setDropTarget] = useState<{ category: TaskCategory; index: number } | null>(null)
 
   const tasksByCategory = useMemo(() => {
@@ -117,14 +152,14 @@ const TooDooOverlay = () => {
     }, buckets)
     // Sort heat categories by sortOrder
     for (const cat of HEAT_CATEGORIES) {
-      result[cat].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      result[cat].sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0))
     }
     // Sort timed tasks by deadline (soonest first), tasks without date at bottom
     result.timed.sort((a, b) => {
       if (a.scheduledDate && b.scheduledDate) return a.scheduledDate - b.scheduledDate
       if (a.scheduledDate) return -1
       if (b.scheduledDate) return 1
-      return (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
+      return a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0
     })
     return result
   }, [tasks])
@@ -410,6 +445,7 @@ const TooDooOverlay = () => {
           </>
         )}
         <div className="topbar-controls no-drag">
+          <span className={`sync-dot sync-${syncStatus}`} title={`Sync: ${syncStatus}`} />
           <button className="font-btn" onClick={() => handleFontSizeChange(-1)}>
             A-
           </button>
@@ -545,13 +581,14 @@ const TooDooOverlay = () => {
                                   {task.scheduledDate &&
                                     (cat.key === 'timed' ? (
                                       <>
-                                        <span
-                                          className={`d-day-marker ${getDDayUrgency(task.scheduledDate) ?? ''}`}
-                                        >
+                                        <span className={`d-day-marker ${getDDayUrgency(task.scheduledDate) ?? ''}`}>
                                           {calculateDDay(task.scheduledDate)}
                                         </span>
                                         <span className="d-day-date">
-                                          {new Date(task.scheduledDate).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                                          {new Date(task.scheduledDate).toLocaleDateString('ko-KR', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                          })}
                                           {task.scheduledTime ? ` ${task.scheduledTime}` : ''}
                                         </span>
                                       </>
@@ -667,6 +704,39 @@ const TooDooOverlay = () => {
               </button>
               <button className="small-button" onClick={() => setNoteModal({ taskId: null, text: '' })}>
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSignIn && (
+        <div className="modal-backdrop">
+          <div className="modal-card no-drag">
+            <h4>Sign in to sync</h4>
+            <input
+              className="edit-input"
+              type="email"
+              placeholder="Email"
+              value={signInForm.email}
+              onChange={(e) => setSignInForm((p) => ({ ...p, email: e.target.value }))}
+              onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
+            />
+            <input
+              className="edit-input"
+              type="password"
+              placeholder="Password"
+              value={signInForm.password}
+              onChange={(e) => setSignInForm((p) => ({ ...p, password: e.target.value }))}
+              onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
+            />
+            {signInError && <p className="sign-in-error">{signInError}</p>}
+            <div className="modal-actions">
+              <button className="button" onClick={handleSignIn} disabled={signingIn}>
+                {signingIn ? 'Signing in...' : 'Sign In'}
+              </button>
+              <button className="small-button" onClick={() => setShowSignIn(false)}>
+                Skip
               </button>
             </div>
           </div>
