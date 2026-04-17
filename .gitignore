@@ -31,3 +31,7 @@ playwright-report/
 
 # Windows error artifacts
 nul
+
+# Release artifacts
+TooDoo-*.apk
+TooDoo-*.zip
