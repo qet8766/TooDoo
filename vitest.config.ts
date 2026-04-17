@@ -1,34 +1,30 @@
 import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
 import path from 'node:path'
 
 export default defineConfig({
+  plugins: [react()],
   test: {
-    // Enable globals (describe, it, expect, etc.) without imports
     globals: true,
 
-    // Environment for renderer tests - use jsdom for DOM testing
+    // Default env is node (main process tests). Renderer tests under
+    // tests/renderer/** override to jsdom via environmentMatchGlobs.
     environment: 'node',
+    environmentMatchGlobs: [['tests/renderer/**', 'jsdom']],
 
-    // Include patterns - only main process unit tests
-    include: ['tests/main/**/*.test.ts'],
+    include: ['tests/main/**/*.test.ts', 'tests/renderer/**/*.test.{ts,tsx}'],
 
-    // Exclude patterns
     exclude: ['node_modules', 'dist', 'dist-electron', 'release'],
 
-    // Coverage configuration
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       exclude: ['node_modules', 'dist', 'dist-electron', 'tests', '**/*.d.ts', '**/*.config.*'],
     },
 
-    // Setup files
-    setupFiles: ['./tests/setup.ts'],
+    setupFiles: ['./tests/setup.ts', './tests/renderer-setup.ts'],
 
-    // Timeout for tests
     testTimeout: 10000,
-
-    // Mock reset between tests
     mockReset: true,
   },
 
