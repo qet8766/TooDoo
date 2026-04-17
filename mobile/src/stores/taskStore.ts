@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
 import { generateKeyBetween } from 'fractional-indexing'
 import type { Task, TaskCategory, ProjectNote } from '@shared/types'
+import { type Result, ok, fail } from '@shared/result'
 import { validateTaskFields, validateProjectNoteFields, sanitizeTasks } from '@shared/validation'
 import { readJson, writeJson } from '../data/persistence'
 import { createQueue } from '../data/queue'
@@ -37,7 +38,7 @@ type TaskActions = {
     category: TaskCategory
     scheduledDate?: number
     scheduledTime?: string
-  }) => Promise<Task | null>
+  }) => Promise<Result<Task>>
   updateTask: (p: {
     id: string
     title?: string
@@ -46,11 +47,11 @@ type TaskActions = {
     category?: TaskCategory
     scheduledDate?: number | null
     scheduledTime?: string | null
-  }) => Promise<Task | null>
+  }) => Promise<Result<Task | null>>
   reorderTask: (taskId: string, targetIndex: number) => Promise<boolean>
   deleteTask: (id: string) => Promise<void>
-  addProjectNote: (taskId: string, content: string) => Promise<ProjectNote | null>
-  updateProjectNote: (noteId: string, content: string) => Promise<ProjectNote | null>
+  addProjectNote: (taskId: string, content: string) => Promise<Result<ProjectNote>>
+  updateProjectNote: (noteId: string, content: string) => Promise<Result<ProjectNote | null>>
   deleteProjectNote: (noteId: string) => Promise<void>
   // Sync helpers
   getAllTasksRaw: () => Task[]
@@ -75,10 +76,7 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => {
     addTask: (p) =>
       queue.enqueue(() => {
         const fieldRes = validateTaskFields(p)
-        if (!fieldRes.success) {
-          console.warn('addTask validation:', fieldRes.error)
-          return null
-        }
+        if (!fieldRes.success) return fail(fieldRes.error)
 
         const { tasks } = get()
         const id = uuid()
@@ -101,20 +99,17 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => {
         set({ tasks: [task, ...tasks] })
         persist()
         pushEntity('task', task)
-        return task
+        return ok(task)
       }),
 
     updateTask: (p) =>
       queue.enqueue(() => {
         const fieldRes = validateTaskFields(p)
-        if (!fieldRes.success) {
-          console.warn('updateTask validation:', fieldRes.error)
-          return null
-        }
+        if (!fieldRes.success) return fail(fieldRes.error)
 
         const { tasks } = get()
         const existing = tasks.find((t) => t.id === p.id)
-        if (!existing || existing.deletedAt) return null
+        if (!existing || existing.deletedAt) return ok(null)
 
         const now = Date.now()
         const newCategory = p.category ?? existing.category
@@ -137,7 +132,7 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => {
         set({ tasks: tasks.map((t) => (t.id === p.id ? updated : t)) })
         persist()
         pushEntity('task', updated)
-        return updated
+        return ok(updated)
       }),
 
     reorderTask: (taskId, targetIndex) =>
@@ -180,14 +175,11 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => {
     addProjectNote: (taskId, content) =>
       queue.enqueue(() => {
         const fieldRes = validateProjectNoteFields({ content })
-        if (!fieldRes.success) {
-          console.warn('addProjectNote validation:', fieldRes.error)
-          return null
-        }
+        if (!fieldRes.success) return fail(fieldRes.error)
 
         const { tasks } = get()
         const task = tasks.find((t) => t.id === taskId)
-        if (!task || task.deletedAt) return null
+        if (!task || task.deletedAt) return fail('Task not found')
 
         const now = Date.now()
         const note: ProjectNote = {
@@ -208,16 +200,13 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => {
         persist()
         pushEntity('projectNote', note)
         pushEntity('task', updatedTask)
-        return note
+        return ok(note)
       }),
 
     updateProjectNote: (noteId, content) =>
       queue.enqueue(() => {
         const fieldRes = validateProjectNoteFields({ content })
-        if (!fieldRes.success) {
-          console.warn('updateProjectNote validation:', fieldRes.error)
-          return null
-        }
+        if (!fieldRes.success) return fail(fieldRes.error)
 
         const { tasks } = get()
         let foundTask: Task | undefined
@@ -232,7 +221,7 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => {
           }
         }
 
-        if (!foundTask || !foundNote || foundNote.deletedAt) return null
+        if (!foundTask || !foundNote || foundNote.deletedAt) return ok(null)
 
         const now = Date.now()
         const updatedNote: ProjectNote = { ...foundNote, content: content.trim(), updatedAt: now }
@@ -246,7 +235,7 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => {
         persist()
         pushEntity('projectNote', updatedNote)
         pushEntity('task', updatedTask)
-        return updatedNote
+        return ok(updatedNote)
       }),
 
     deleteProjectNote: (noteId) =>

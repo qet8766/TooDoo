@@ -3,6 +3,7 @@ import { View, TextInput, TouchableOpacity, Text, StyleSheet, KeyboardAvoidingVi
 import type { StackScreenProps } from '@react-navigation/stack'
 import type { NotesStackParamList } from '../../app/NotesStack'
 import { useNoteStore } from '../../stores/noteStore'
+import { handleResult } from '../../lib/showError'
 import { colors } from '../../theme/colors'
 import { spacing } from '../../theme/spacing'
 
@@ -28,19 +29,21 @@ export function NoteEditorScreen({ route, navigation }: Props) {
     if (!trimmedTitle || isSubmitting) return
     setIsSubmitting(true)
 
-    if (isEditing && noteId) {
-      await useNoteStore.getState().updateNote({
-        id: noteId,
-        title: trimmedTitle,
-        content: trimmedContent,
-      })
-    } else {
-      await useNoteStore.getState().addNote({
-        title: trimmedTitle,
-        content: trimmedContent,
-      })
-    }
+    const res = isEditing && noteId
+      ? await useNoteStore.getState().updateNote({
+          id: noteId,
+          title: trimmedTitle,
+          content: trimmedContent,
+        })
+      : await useNoteStore.getState().addNote({
+          title: trimmedTitle,
+          content: trimmedContent,
+        })
 
+    if (handleResult(res) === null) {
+      setIsSubmitting(false)
+      return
+    }
     navigation.goBack()
   }
 

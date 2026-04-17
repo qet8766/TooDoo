@@ -10,7 +10,7 @@ Grounded against actual files: Overlay.tsx=812 lines, desktop sync.ts=364, mobil
 | 1 Shared core | ✅ done | `f4d7694` | 231 (226 desktop + 5 mobile) + Playwright 13/13 |
 | 2 Sync robustness | ✅ done | `92993b5` | 251 (232 desktop + 19 mobile) + Playwright 13/13 |
 | 3 Overlay split | ✅ done | `67b5eb8` | 251 (232 desktop + 19 mobile) + Playwright 13/13 |
-| 4 Mobile parity | ⬜ next | — | — |
+| 4 Mobile parity | ✅ done | `937d100` + Phase 4b | 260 (232 desktop + 28 mobile) + Playwright 13/13 |
 | 5 Monorepo | ⬜ | — | — |
 | 6 Polish | ⬜ | — | — |
 
@@ -69,10 +69,13 @@ Three highest-churn concerns in `Overlay.tsx` now live in isolated hooks.
 
 Overlay.tsx went from **812 → 640 lines** (not the aspirational `<300` — that would require extracting DnD and modals, which wasn't in scope for this pass). Three new hooks total 242 lines; net renderer code grew slightly, but top-level state dropped from 12 useStates to 4. Exit met: Phase 0 characterization tests pass, Playwright 13/13.
 
-## Phase 4 — Mobile prop-drilling fix + Result adoption (2 days)
+## Phase 4 — Mobile prop-drilling fix + Result adoption ✅
 
-- `TasksScreen → CategorySection → TaskCard` passes ~19 props. Extract a Zustand slice `taskInteractionStore` for `{ editingTaskId, editForm, armedForDelete, noteArmedForDelete }`.
-- Adopt `Result<T>` across mobile stores (parity with Phase 1). Screens show specific error toasts instead of silent null.
+Shipped in two commits under the Phase 4 umbrella, following "one refactor, one behavior":
+
+- **Phase 4a (`937d100`)**: `taskInteractionStore` owns edit state + arm-for-delete sets for tasks and notes. TasksScreen's top-level state drops from 4 slots (2 useStates + 2 `useDeleteArm`) to 1 (`moveTask`). CategorySection/TaskCard prop shape unchanged — source flips from screen-local state to store selectors. `EditForm` type moves to the store (re-exported from `TaskCardEditForm` for back-compat). `armOrConfirmX` returns `boolean` so `LayoutAnimation.configureNext` + `deleteTask` stay in the screen handler. `useDeleteArm` kept intact for `NotesScreen`. Module-scope timer tables mirror the hook's `useRef<Map>` pattern. Cleanup via `useEffect(() => disarmAll)` on unmount.
+- **Phase 4b**: Mobile stores match desktop `Result<T>` surface where desktop uses it (`addTask`/`updateTask`/`addProjectNote`/`updateProjectNote`/`addNote`/`updateNote`). `deleteX` / `reorderTask` keep `void`/`boolean` to preserve desktop parity. `authStore` unchanged — `doSignIn` has its own error channel via `error` state rendered inline in `SignInScreen`. New `toastStore` + `ToastHost` (40 lines, Animated fade, mounted once in `App.tsx`) + `handleResult` helper in `lib/showError.ts`. 7 mobile call sites updated to surface errors via toast; `navigation.goBack()` is gated on success so validation errors keep the user on screen.
+- **Tests added**: 5 in `taskInteractionStore.test.ts` (arm/confirm, auto-disarm timer, independent sets, disarmAll, edit flow) + 4 in `taskStore.result.test.ts` (ok/fail discriminant, missing task, missing parent). Extended jest `transformIgnorePatterns` to cover `uuid` + `fractional-indexing` ESM. 19 → 28 mobile tests.
 
 ## Phase 5 — Monorepo extraction (3–4 days, only after 1–4)
 

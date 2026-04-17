@@ -14,6 +14,7 @@ import { FAB } from '../../components/common/FAB'
 import { SyncDot } from '../../components/common/SyncDot'
 import { FontSizeControls } from '../../components/common/FontSizeControls'
 import { CategoryMoveSheet } from '../../components/common/CategoryMoveSheet'
+import { handleResult } from '../../lib/showError'
 import { colors } from '../../theme/colors'
 import { spacing } from '../../theme/spacing'
 
@@ -49,7 +50,7 @@ export function TasksScreen() {
     [startEdit],
   )
 
-  const handleEditSave = useCallback(() => {
+  const handleEditSave = useCallback(async () => {
     const { editingTaskId: id, editForm: form } = useTaskInteractionStore.getState()
     if (!id || !form) return
 
@@ -60,13 +61,14 @@ export function TasksScreen() {
       dateMs = d.getTime()
     }
 
-    store.getState().updateTask({
+    const res = await store.getState().updateTask({
       id,
       title: form.title,
       description: form.description || null,
       scheduledDate: dateMs,
       scheduledTime: dateMs && form.scheduledTime ? form.scheduledTime : null,
     })
+    if (handleResult(res) === null) return
     cancelEdit()
   }, [store, cancelEdit])
 
@@ -90,32 +92,32 @@ export function TasksScreen() {
   )
 
   const handleNoteUpdate = useCallback(
-    (noteId: string, content: string) => {
-      store.getState().updateProjectNote(noteId, content)
+    async (noteId: string, content: string) => {
+      handleResult(await store.getState().updateProjectNote(noteId, content))
     },
     [store],
   )
 
   const handleNoteAdd = useCallback(
-    (taskId: string, content: string) => {
-      if (content) {
-        store.getState().addProjectNote(taskId, content)
-      }
+    async (taskId: string, content: string) => {
+      if (!content) return
+      handleResult(await store.getState().addProjectNote(taskId, content))
     },
     [store],
   )
 
   const handleReorder = useCallback(
     (taskId: string, toIndex: number) => {
-      store.getState().reorderTask(taskId, toIndex)
+      // reorderTask returns boolean (desktop parity); no toast surface.
+      void store.getState().reorderTask(taskId, toIndex)
     },
     [store],
   )
 
   const handleCategoryMove = useCallback(
-    (taskId: string, category: TaskCategory) => {
+    async (taskId: string, category: TaskCategory) => {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
-      store.getState().updateTask({ id: taskId, category })
+      handleResult(await store.getState().updateTask({ id: taskId, category }))
     },
     [store],
   )

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
 import type { Note } from '@shared/types'
+import { type Result, ok, fail } from '@shared/result'
 import { validateNoteFields, sanitizeNotes } from '@shared/validation'
 import { readJson, writeJson } from '../data/persistence'
 import { createQueue } from '../data/queue'
@@ -16,8 +17,8 @@ type NoteState = {
 
 type NoteActions = {
   init: () => Promise<void>
-  addNote: (p: { title: string; content: string }) => Promise<Note | null>
-  updateNote: (p: { id: string; title?: string; content?: string }) => Promise<Note | null>
+  addNote: (p: { title: string; content: string }) => Promise<Result<Note>>
+  updateNote: (p: { id: string; title?: string; content?: string }) => Promise<Result<Note | null>>
   deleteNote: (id: string) => Promise<void>
   // Sync helpers
   getAllNotesRaw: () => Note[]
@@ -41,10 +42,7 @@ export const useNoteStore = create<NoteState & NoteActions>((set, get) => {
     addNote: (p) =>
       queue.enqueue(() => {
         const fieldRes = validateNoteFields(p)
-        if (!fieldRes.success) {
-          console.warn('addNote validation:', fieldRes.error)
-          return null
-        }
+        if (!fieldRes.success) return fail(fieldRes.error)
 
         const { notes } = get()
         const now = Date.now()
@@ -59,20 +57,17 @@ export const useNoteStore = create<NoteState & NoteActions>((set, get) => {
         set({ notes: [note, ...notes] })
         persist()
         pushEntity('note', note)
-        return note
+        return ok(note)
       }),
 
     updateNote: (p) =>
       queue.enqueue(() => {
         const fieldRes = validateNoteFields(p)
-        if (!fieldRes.success) {
-          console.warn('updateNote validation:', fieldRes.error)
-          return null
-        }
+        if (!fieldRes.success) return fail(fieldRes.error)
 
         const { notes } = get()
         const existing = notes.find((n) => n.id === p.id)
-        if (!existing || existing.deletedAt) return null
+        if (!existing || existing.deletedAt) return ok(null)
 
         const updated: Note = {
           ...existing,
@@ -84,7 +79,7 @@ export const useNoteStore = create<NoteState & NoteActions>((set, get) => {
         set({ notes: notes.map((n) => (n.id === p.id ? updated : n)) })
         persist()
         pushEntity('note', updated)
-        return updated
+        return ok(updated)
       }),
 
     deleteNote: (id) =>

@@ -6,6 +6,7 @@ import type { Task } from '@shared/types'
 import { formatDateStr, getHoliday } from '@shared/holidays'
 import type { CalendarStackParamList } from '../../app/CalendarStack'
 import { useTaskStore } from '../../stores/taskStore'
+import { handleResult } from '../../lib/showError'
 import { HolidayBadge } from '../../components/calendar/HolidayBadge'
 import { toneColors } from '../../theme/tones'
 import { colors } from '../../theme/colors'
@@ -65,15 +66,17 @@ export function CalendarDayScreen({ route, navigation }: Props) {
     if (!trimmed || isSubmitting) return
     setIsSubmitting(true)
 
-    await useTaskStore.getState().addTask({
+    const res = await useTaskStore.getState().addTask({
       title: trimmed,
       category: 'timed',
       scheduledDate: date.getTime(),
       scheduledTime: scheduledTime || undefined,
     })
 
-    setTitle('')
-    setScheduledTime('')
+    if (handleResult(res) !== null) {
+      setTitle('')
+      setScheduledTime('')
+    }
     setIsSubmitting(false)
   }
 

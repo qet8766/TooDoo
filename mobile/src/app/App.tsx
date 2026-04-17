@@ -10,6 +10,7 @@ import { useNoteStore } from '../stores/noteStore'
 import { useUIStore } from '../stores/uiStore'
 import { initSync } from '../data/sync'
 import { RootNavigator } from './RootNavigator'
+import { ToastHost } from '../components/common/Toast'
 
 const darkTheme = {
   ...DefaultTheme,
@@ -58,6 +59,7 @@ export default function App() {
         <NavigationContainer theme={darkTheme}>
           <RootNavigator />
         </NavigationContainer>
+        <ToastHost />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   )

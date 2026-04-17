@@ -14,6 +14,7 @@ import type { StackScreenProps } from '@react-navigation/stack'
 import type { TaskCategory } from '@shared/types'
 import type { RootStackParamList } from '../../app/RootNavigator'
 import { useTaskStore } from '../../stores/taskStore'
+import { handleResult } from '../../lib/showError'
 import { CategoryPicker } from '../../components/tasks/CategoryPicker'
 import { colors } from '../../theme/colors'
 import { spacing } from '../../theme/spacing'
@@ -55,7 +56,7 @@ export function QuickAddScreen({ navigation, route }: Props) {
     if (!trimmed || isSubmitting) return
     setIsSubmitting(true)
 
-    await useTaskStore.getState().addTask({
+    const res = await useTaskStore.getState().addTask({
       title: trimmed,
       description: description.trim() || undefined,
       category,
@@ -63,6 +64,10 @@ export function QuickAddScreen({ navigation, route }: Props) {
       scheduledTime: scheduledDate && scheduledTime ? scheduledTime : undefined,
     })
 
+    if (handleResult(res) === null) {
+      setIsSubmitting(false)
+      return
+    }
     navigation.goBack()
   }
 
