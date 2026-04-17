@@ -5,6 +5,8 @@ const DEFAULT_TIMEOUT_MS = 2000
 /**
  * Two-stage delete confirmation hook.
  * Direct port from Electron — no platform-specific APIs used.
+ * The Tasks screen uses `taskInteractionStore` instead; this hook remains
+ * for standalone screens like NotesScreen.
  */
 export function useDeleteArm(timeoutMs = DEFAULT_TIMEOUT_MS) {
   const [armedForDelete, setArmedForDelete] = useState<Set<string>>(new Set())

@@ -3,13 +3,9 @@ import { View, TextInput, TouchableOpacity, Text, StyleSheet, Platform } from 'r
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker'
 import { colors } from '../../theme/colors'
 import { spacing } from '../../theme/spacing'
+import type { EditForm } from '../../stores/taskInteractionStore'
 
-export type EditForm = {
-  title: string
-  description: string
-  scheduledDate: Date | null
-  scheduledTime: string
-}
+export type { EditForm }
 
 type Props = {
   form: EditForm

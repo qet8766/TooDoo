@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { View, Text, StyleSheet, LayoutAnimation } from 'react-native'
 import { NestableScrollContainer } from 'react-native-draggable-flatlist'
 import { useNavigation } from '@react-navigation/native'
@@ -6,11 +6,10 @@ import type { StackNavigationProp } from '@react-navigation/stack'
 import type { Task, TaskCategory } from '@shared/types'
 import type { RootStackParamList } from '../../app/RootNavigator'
 import { useTaskStore } from '../../stores/taskStore'
+import { useTaskInteractionStore } from '../../stores/taskInteractionStore'
 import { useTaskSections } from '../../hooks/useTaskSections'
-import { useDeleteArm } from '../../hooks/useDeleteArm'
 import { useFontSize } from '../../hooks/useFontSize'
 import { CategorySection } from '../../components/tasks/CategorySection'
-import { type EditForm } from '../../components/tasks/TaskCardEditForm'
 import { FAB } from '../../components/common/FAB'
 import { SyncDot } from '../../components/common/SyncDot'
 import { FontSizeControls } from '../../components/common/FontSizeControls'
@@ -23,14 +22,15 @@ export function TasksScreen() {
   const { sections, isScorchingMode, visibleCategories } = useTaskSections()
   const { fontSize } = useFontSize()
 
-  // Task delete arm
-  const { armedForDelete: taskArmed, armForDelete: armTask, disarmDelete: disarmTask } = useDeleteArm()
-  // Project note delete arm
-  const { armedForDelete: noteArmed, armForDelete: armNote, disarmDelete: disarmNote } = useDeleteArm()
+  const editingTaskId = useTaskInteractionStore((s) => s.editingTaskId)
+  const editForm = useTaskInteractionStore((s) => s.editForm)
+  const armedTasks = useTaskInteractionStore((s) => s.armedTasks)
+  const armedNotes = useTaskInteractionStore((s) => s.armedNotes)
+  const { startEdit, updateForm, cancelEdit, armOrConfirmTask, armOrConfirmNote, disarmAll } =
+    useTaskInteractionStore.getState()
 
-  // Editing state (ephemeral, one task at a time)
-  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
-  const [editForm, setEditForm] = useState<EditForm | null>(null)
+  // Clear transient interaction state when the screen unmounts.
+  useEffect(() => disarmAll, [disarmAll])
 
   // Category move sheet
   const [moveTask, setMoveTask] = useState<Task | null>(null)
@@ -39,66 +39,54 @@ export function TasksScreen() {
 
   const handleEditStart = useCallback(
     (task: Task) => {
-      setEditingTaskId(task.id)
-      setEditForm({
+      startEdit(task.id, {
         title: task.title,
         description: task.description ?? '',
         scheduledDate: task.scheduledDate ? new Date(task.scheduledDate) : null,
         scheduledTime: task.scheduledTime ?? '',
       })
     },
-    [],
+    [startEdit],
   )
 
   const handleEditSave = useCallback(() => {
-    if (!editingTaskId || !editForm) return
+    const { editingTaskId: id, editForm: form } = useTaskInteractionStore.getState()
+    if (!id || !form) return
 
     let dateMs: number | null = null
-    if (editForm.scheduledDate) {
-      const d = new Date(editForm.scheduledDate)
+    if (form.scheduledDate) {
+      const d = new Date(form.scheduledDate)
       d.setHours(0, 0, 0, 0)
       dateMs = d.getTime()
     }
 
     store.getState().updateTask({
-      id: editingTaskId,
-      title: editForm.title,
-      description: editForm.description || null,
+      id,
+      title: form.title,
+      description: form.description || null,
       scheduledDate: dateMs,
-      scheduledTime: dateMs && editForm.scheduledTime ? editForm.scheduledTime : null,
+      scheduledTime: dateMs && form.scheduledTime ? form.scheduledTime : null,
     })
-    setEditingTaskId(null)
-    setEditForm(null)
-  }, [editingTaskId, editForm, store])
-
-  const handleEditCancel = useCallback(() => {
-    setEditingTaskId(null)
-    setEditForm(null)
-  }, [])
+    cancelEdit()
+  }, [store, cancelEdit])
 
   const handleDeletePress = useCallback(
     (taskId: string) => {
-      if (taskArmed.has(taskId)) {
-        disarmTask(taskId)
+      if (armOrConfirmTask(taskId)) {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
         store.getState().deleteTask(taskId)
-      } else {
-        armTask(taskId)
       }
     },
-    [taskArmed, armTask, disarmTask, store],
+    [armOrConfirmTask, store],
   )
 
   const handleNoteDeletePress = useCallback(
     (noteId: string) => {
-      if (noteArmed.has(noteId)) {
-        disarmNote(noteId)
+      if (armOrConfirmNote(noteId)) {
         store.getState().deleteProjectNote(noteId)
-      } else {
-        armNote(noteId)
       }
     },
-    [noteArmed, armNote, disarmNote, store],
+    [armOrConfirmNote, store],
   )
 
   const handleNoteUpdate = useCallback(
@@ -156,14 +144,14 @@ export function TasksScreen() {
               editingTaskId={editingTaskId}
               editForm={editForm}
               onEditStart={handleEditStart}
-              onEditChange={setEditForm}
+              onEditChange={updateForm}
               onEditSave={handleEditSave}
-              onEditCancel={handleEditCancel}
+              onEditCancel={cancelEdit}
               onReorder={handleReorder}
               onLongPress={(task) => setMoveTask(task)}
-              armedForDelete={taskArmed}
+              armedForDelete={armedTasks}
               onDeletePress={handleDeletePress}
-              noteArmedForDelete={noteArmed}
+              noteArmedForDelete={armedNotes}
               onNoteDeletePress={handleNoteDeletePress}
               onNoteUpdate={handleNoteUpdate}
               onNoteAdd={handleNoteAdd}
