@@ -1,35 +1,26 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type DragEvent,
-  type MouseEvent as ReactMouseEvent,
-} from 'react'
-import type { ProjectNote, Task, TaskCategory } from '@shared/types'
-import { CATEGORIES, NORMAL_CATEGORIES, HEAT_CATEGORIES } from '@shared/categories'
+import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent } from 'react'
+import type { ProjectNote, TaskCategory } from '@shared/types'
 import { calculateDDay, getDDayUrgency } from '@shared/category-calculator'
 import { CalendarPanel } from '../components/Calendar'
 import { useFontSize } from '../hooks/useFontSize'
 import { useDeleteArm } from '../hooks/useDeleteArm'
-
-const MINIMIZE_DURATION_MS = 60 * 60 * 1000 // 1 hour
-const MINIMIZE_CHECK_INTERVAL_MS = 60 * 1000 // check every minute
+import { useTaskList } from '../hooks/useTaskList'
+import { useMinimizeTimer } from '../hooks/useMinimizeTimer'
+import { useTaskEditing } from '../hooks/useTaskEditing'
 
 const TooDooOverlay = () => {
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [editing, setEditing] = useState<
-    Record<string, { title: string; description: string; scheduledDate: string; scheduledTime: string }>
-  >({})
-  const [isLoading, setIsLoading] = useState(true)
+  const { tasks, setTasks, isLoading, tasksByCategory, isScorchingMode, visibleCategories } = useTaskList()
+  const { isMinimized, handleMinimize, handleExpand } = useMinimizeTimer(isScorchingMode)
+  const { editing, startEdit, updateEdit, cancelEdit, saveEdit } = useTaskEditing({
+    onSaved: (task) => setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t))),
+  })
+
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ category: TaskCategory; index: number } | null>(null)
   const [noteModal, setNoteModal] = useState<{ taskId: string | null; text: string }>({ taskId: null, text: '' })
   const [editingNote, setEditingNote] = useState<{ noteId: string; content: string } | null>(null)
   const { fontSize, handleFontSizeChange } = useFontSize('toodoo-font-size')
   const { armedForDelete, armForDelete, disarmDelete, deleteTimers } = useDeleteArm()
-  const [isMinimized, setIsMinimized] = useState(false)
-  const [minimizedAt, setMinimizedAt] = useState<number | null>(null)
   const [isCalendarOpen, setIsCalendarOpen] = useState(false)
   const [syncStatus, setSyncStatus] = useState<string>('offline')
   const [showSignIn, setShowSignIn] = useState(false)
@@ -37,76 +28,29 @@ const TooDooOverlay = () => {
   const [signInError, setSignInError] = useState('')
   const [signingIn, setSigningIn] = useState(false)
 
-  // Notify main process when calendar opens/closes to resize window
-  // Use a ref to track what we last sent to avoid duplicate IPC calls
+  // Disarm delete timers for tasks/notes that no longer exist in the cache.
+  useEffect(() => {
+    const existingIds = new Set<string>()
+    for (const task of tasks) {
+      existingIds.add(task.id)
+      for (const note of task.projectNotes ?? []) existingIds.add(note.id)
+    }
+    for (const id of [...deleteTimers.current.keys()]) {
+      if (!existingIds.has(id)) disarmDelete(id)
+    }
+  }, [tasks, deleteTimers, disarmDelete])
+
+  // Notify main process when calendar opens/closes so it can resize the window.
+  // Ref-guard avoids duplicate IPC calls on benign re-renders.
   const lastCalendarStateRef = useRef(false)
   useEffect(() => {
-    // Only send IPC if state actually changed from what we last sent
     if (lastCalendarStateRef.current !== isCalendarOpen) {
       lastCalendarStateRef.current = isCalendarOpen
       window.toodoo.setCalendarOpen(isCalendarOpen)
     }
   }, [isCalendarOpen])
 
-  // Focus mode: minimize/expand handlers
-  const handleMinimize = useCallback(() => {
-    setIsMinimized(true)
-    setMinimizedAt(Date.now())
-    window.toodoo.setMinimized(true)
-  }, [])
-
-  const handleExpand = useCallback(() => {
-    setIsMinimized(false)
-    setMinimizedAt(null)
-    window.toodoo.setMinimized(false)
-  }, [])
-
-  const fetchTasks = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const data = await window.toodoo.tasks.list()
-      setTasks(data)
-
-      // Clean up timers for tasks/notes that no longer exist
-      const existingIds = new Set<string>()
-      for (const task of data) {
-        existingIds.add(task.id)
-        for (const note of task.projectNotes ?? []) {
-          existingIds.add(note.id)
-        }
-      }
-      // Disarm deleted items
-      const staleIds = [...deleteTimers.current.keys()].filter((id) => !existingIds.has(id))
-      staleIds.forEach(disarmDelete)
-    } catch (error) {
-      console.error('Failed to fetch tasks:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [disarmDelete, deleteTimers])
-
-  useEffect(() => {
-    // Subscribe to task changes and fetch initial data
-    const unsubscribe = window.toodoo.onTasksChanged(fetchTasks)
-    fetchTasks()
-    return unsubscribe
-  }, [fetchTasks])
-
-  // Focus mode: auto-expand after 1 hour
-  useEffect(() => {
-    if (!isMinimized || !minimizedAt) return
-
-    const checkExpiry = () => {
-      if (Date.now() - minimizedAt >= MINIMIZE_DURATION_MS) {
-        handleExpand()
-      }
-    }
-
-    const interval = setInterval(checkExpiry, MINIMIZE_CHECK_INTERVAL_MS)
-    return () => clearInterval(interval)
-  }, [isMinimized, minimizedAt, handleExpand])
-
-  // Sync + auth status
+  // Sync + auth status subscriptions.
   useEffect(() => {
     window.toodoo.sync.getStatus().then((s) => setSyncStatus(s.status))
     const unsub = window.toodoo.onSyncStatusChanged((s) => setSyncStatus(s.status))
@@ -135,48 +79,6 @@ const TooDooOverlay = () => {
       setSignInError(result.error)
     }
   }
-
-  const [dropTarget, setDropTarget] = useState<{ category: TaskCategory; index: number } | null>(null)
-
-  const tasksByCategory = useMemo(() => {
-    const buckets: Record<TaskCategory, Task[]> = {
-      scorching: [],
-      hot: [],
-      warm: [],
-      cool: [],
-      timed: [],
-    }
-    const result = tasks.reduce((acc, task) => {
-      if (acc[task.category]) acc[task.category].push(task)
-      return acc
-    }, buckets)
-    // Sort heat categories by sortOrder
-    for (const cat of HEAT_CATEGORIES) {
-      result[cat].sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0))
-    }
-    // Sort timed tasks by deadline (soonest first), tasks without date at bottom
-    result.timed.sort((a, b) => {
-      if (a.scheduledDate && b.scheduledDate) return a.scheduledDate - b.scheduledDate
-      if (a.scheduledDate) return -1
-      if (b.scheduledDate) return 1
-      return a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0
-    })
-    return result
-  }, [tasks])
-
-  const isScorchingMode = tasksByCategory.scorching.length > 0
-  const visibleCategories = useMemo(() => {
-    // In scorching mode, show scorching + timed (timed always visible)
-    if (isScorchingMode) return [CATEGORIES.scorching, CATEGORIES.timed]
-    return NORMAL_CATEGORIES.map((k) => CATEGORIES[k])
-  }, [isScorchingMode])
-
-  // Focus mode: auto-expand when scorching tasks appear
-  useEffect(() => {
-    if (isScorchingMode && isMinimized) {
-      handleExpand()
-    }
-  }, [isScorchingMode, isMinimized, handleExpand])
 
   const handleDragStart = useCallback(
     (taskId: string) => (e: DragEvent<HTMLDivElement>) => {
@@ -251,52 +153,6 @@ const TooDooOverlay = () => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
   }, [])
-
-  const startEdit = (task: Task) => {
-    // Convert scheduledDate timestamp to YYYY-MM-DD format for input
-    const dateStr = task.scheduledDate ? new Date(task.scheduledDate).toISOString().split('T')[0] : ''
-    setEditing((prev) => ({
-      ...prev,
-      [task.id]: {
-        title: task.title,
-        description: task.description ?? '',
-        scheduledDate: dateStr,
-        scheduledTime: task.scheduledTime ?? '',
-      },
-    }))
-  }
-
-  const saveEdit = async (taskId: string) => {
-    const form = editing[taskId]
-    if (!form) return
-
-    // Convert date string to timestamp (null to clear schedule)
-    let scheduledDate: number | null = null
-    if (form.scheduledDate) {
-      const date = new Date(form.scheduledDate)
-      date.setHours(0, 0, 0, 0)
-      scheduledDate = date.getTime()
-    }
-
-    const result = await window.toodoo.tasks.update({
-      id: taskId,
-      title: form.title,
-      description: form.description.trim() ? form.description : null,
-      scheduledDate,
-      scheduledTime: form.scheduledTime || null,
-    })
-    if (result.success && result.data) {
-      setTasks((prev) => prev.map((item) => (item.id === taskId ? result.data! : item)))
-      setEditing((prev) => {
-        const next = { ...prev }
-        delete next[taskId]
-        return next
-      })
-    } else if (!result.success) {
-      console.error('Failed to save task:', result.error)
-      // Keep editing mode open so user can fix the issue
-    }
-  }
 
   const removeTask = async (taskId: string) => {
     disarmDelete(taskId)
@@ -526,17 +382,13 @@ const TooDooOverlay = () => {
                                 <input
                                   className="edit-input"
                                   value={form.title}
-                                  onChange={(e) =>
-                                    setEditing((p) => ({ ...p, [task.id]: { ...form, title: e.target.value } }))
-                                  }
+                                  onChange={(e) => updateEdit(task.id, { title: e.target.value })}
                                 />
                                 <textarea
                                   className="edit-textarea"
                                   rows={3}
                                   value={form.description}
-                                  onChange={(e) =>
-                                    setEditing((p) => ({ ...p, [task.id]: { ...form, description: e.target.value } }))
-                                  }
+                                  onChange={(e) => updateEdit(task.id, { description: e.target.value })}
                                   placeholder="Description"
                                 />
                                 <div className="edit-schedule-row">
@@ -544,36 +396,21 @@ const TooDooOverlay = () => {
                                     type="date"
                                     className="edit-date-input"
                                     value={form.scheduledDate}
-                                    onChange={(e) =>
-                                      setEditing((p) => ({
-                                        ...p,
-                                        [task.id]: { ...form, scheduledDate: e.target.value },
-                                      }))
-                                    }
+                                    onChange={(e) => updateEdit(task.id, { scheduledDate: e.target.value })}
                                     title="Schedule date"
                                   />
                                   <input
                                     type="time"
                                     className="edit-time-input"
                                     value={form.scheduledTime}
-                                    onChange={(e) =>
-                                      setEditing((p) => ({
-                                        ...p,
-                                        [task.id]: { ...form, scheduledTime: e.target.value },
-                                      }))
-                                    }
+                                    onChange={(e) => updateEdit(task.id, { scheduledTime: e.target.value })}
                                     title="Schedule time (optional)"
                                   />
                                   {(form.scheduledDate || form.scheduledTime) && (
                                     <button
                                       type="button"
                                       className="small-button clear-schedule-btn"
-                                      onClick={() =>
-                                        setEditing((p) => ({
-                                          ...p,
-                                          [task.id]: { ...form, scheduledDate: '', scheduledTime: '' },
-                                        }))
-                                      }
+                                      onClick={() => updateEdit(task.id, { scheduledDate: '', scheduledTime: '' })}
                                       title="Clear schedule"
                                     >
                                       ✕
@@ -617,16 +454,7 @@ const TooDooOverlay = () => {
                                   <button className="small-button" onClick={() => saveEdit(task.id)}>
                                     Save
                                   </button>
-                                  <button
-                                    className="small-button"
-                                    onClick={() =>
-                                      setEditing((p) => {
-                                        const n = { ...p }
-                                        delete n[task.id]
-                                        return n
-                                      })
-                                    }
-                                  >
+                                  <button className="small-button" onClick={() => cancelEdit(task.id)}>
                                     Cancel
                                   </button>
                                 </>
