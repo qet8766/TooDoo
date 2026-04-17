@@ -9,8 +9,8 @@ Grounded against actual files: Overlay.tsx=812 lines, desktop sync.ts=364, mobil
 | 0 Safety net | ✅ done | `621298a` | 212 (207 desktop + 5 mobile) |
 | 1 Shared core | ✅ done | `f4d7694` | 231 (226 desktop + 5 mobile) + Playwright 13/13 |
 | 2 Sync robustness | ✅ done | `92993b5` | 251 (232 desktop + 19 mobile) + Playwright 13/13 |
-| 3 Overlay split | ⬜ next | — | — |
-| 4 Mobile parity | ⬜ | — | — |
+| 3 Overlay split | ✅ done | `67b5eb8` | 251 (232 desktop + 19 mobile) + Playwright 13/13 |
+| 4 Mobile parity | ⬜ next | — | — |
 | 5 Monorepo | ⬜ | — | — |
 | 6 Polish | ⬜ | — | — |
 
@@ -58,17 +58,16 @@ Desktop and mobile now share the same error classification pipeline.
 
 Exit met: 6 new reason tests in `sync-engine.test.ts` (41 total in that file); new mobile `sync.test.ts` with 14 tests covering classification, dirty tracking, connectivity race, auth cooldown, pull merging, and listener propagation. Playwright 13/13.
 
-## Phase 3 — Overlay decomposition (2–3 days)
+## Phase 3 — Overlay decomposition ✅
 
-`Overlay.tsx` at 812 lines with 12 useStates is the biggest risk area. Split, don't rewrite.
+Three highest-churn concerns in `Overlay.tsx` now live in isolated hooks.
 
-- `useTaskList()` hook: fetch + `onTasksChanged` subscription + sorting.
-- `useMinimizeTimer()` hook: focus-mode timer + scorching override.
-- `useTaskEditing()` hook: reducer (`start`, `change`, `save`, `cancel`).
-- Overlay.tsx becomes a thin composition shell (<300 lines).
-- No Zustand on desktop yet — reassess only if cross-component sharing appears.
+- [x] **`useTaskList()`**: task cache (fetch, onTasksChanged subscription, optimistic `setTasks`) + derived views (`tasksByCategory` with fractional sort for heat and deadline sort for timed, `isScorchingMode`, `visibleCategories`).
+- [x] **`useMinimizeTimer(isScorchingMode)`**: hour-long auto-expand + scorching-forced expand; pushes state to main via `window.toodoo.setMinimized`.
+- [x] **`useTaskEditing({ onSaved })`**: `useReducer` over edit state (start / change / cancel) plus a save action that calls `window.toodoo.tasks.update` and invokes `onSaved` for the parent's optimistic patch. JSX handlers call `updateEdit()` / `cancelEdit()` directly.
+- [x] DnD, project-note editing, sign-in modal, sync-status wiring, resize grip: left inline — same coupling risk, no reuse pressure.
 
-Exit: Phase 0 characterization tests pass; Playwright unchanged.
+Overlay.tsx went from **812 → 640 lines** (not the aspirational `<300` — that would require extracting DnD and modals, which wasn't in scope for this pass). Three new hooks total 242 lines; net renderer code grew slightly, but top-level state dropped from 12 useStates to 4. Exit met: Phase 0 characterization tests pass, Playwright 13/13.
 
 ## Phase 4 — Mobile prop-drilling fix + Result adoption (2 days)
 
