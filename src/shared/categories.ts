@@ -17,3 +17,19 @@ export const CATEGORIES: Record<TaskCategory, CategoryConfig> = {
 export const HEAT_CATEGORIES: TaskCategory[] = ['scorching', 'hot', 'warm', 'cool']
 export const NORMAL_CATEGORIES: TaskCategory[] = ['hot', 'warm', 'cool', 'timed']
 export const ALL_CATEGORIES: TaskCategory[] = ['scorching', 'hot', 'warm', 'cool', 'timed']
+
+/**
+ * Coerce an unknown value into a TaskCategory.
+ *
+ * Handles the 'project' → 'timed' rename (legacy data from the heat-only era
+ * where Timed was called Project). Used at every boundary where external
+ * data enters the app: the fromTaskRow mapper (remote pulls) and sanitizeTask
+ * (local JSON load). Anything unrecognized falls back to 'cool'.
+ */
+export const normalizeCategory = (raw: unknown): TaskCategory => {
+  if (raw === 'project') return 'timed'
+  if (typeof raw === 'string' && (ALL_CATEGORIES as string[]).includes(raw)) {
+    return raw as TaskCategory
+  }
+  return 'cool'
+}

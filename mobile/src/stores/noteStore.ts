@@ -40,9 +40,9 @@ export const useNoteStore = create<NoteState & NoteActions>((set, get) => {
 
     addNote: (p) =>
       queue.enqueue(() => {
-        const fieldErr = validateNoteFields(p)
-        if (fieldErr) {
-          console.warn('addNote validation:', fieldErr)
+        const fieldRes = validateNoteFields(p)
+        if (!fieldRes.success) {
+          console.warn('addNote validation:', fieldRes.error)
           return null
         }
 
@@ -64,9 +64,9 @@ export const useNoteStore = create<NoteState & NoteActions>((set, get) => {
 
     updateNote: (p) =>
       queue.enqueue(() => {
-        const fieldErr = validateNoteFields(p)
-        if (fieldErr) {
-          console.warn('updateNote validation:', fieldErr)
+        const fieldRes = validateNoteFields(p)
+        if (!fieldRes.success) {
+          console.warn('updateNote validation:', fieldRes.error)
           return null
         }
 

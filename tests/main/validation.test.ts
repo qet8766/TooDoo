@@ -18,6 +18,12 @@ import {
   sanitizeNotes,
   LIMITS,
 } from '@shared/validation'
+import type { Result } from '@shared/result'
+
+// Helpers to keep the existing .toContain(msg) / .toBeNull() assertion style
+// readable against the new Result<null> return shape.
+const errorOf = (r: Result<null>): string => (r.success ? '' : r.error)
+const isOk = (r: Result<null>): boolean => r.success
 
 describe('validateId', () => {
   it('should reject empty string', () => {
@@ -61,76 +67,78 @@ describe('isValidTimeFormat', () => {
 
 describe('validateTaskFields', () => {
   it('should reject empty title', () => {
-    expect(validateTaskFields({ title: '' })).toContain('empty')
+    expect(errorOf(validateTaskFields({ title: '' }))).toContain('empty')
   })
 
   it('should reject whitespace-only title', () => {
-    expect(validateTaskFields({ title: '   ' })).toContain('empty')
+    expect(errorOf(validateTaskFields({ title: '   ' }))).toContain('empty')
   })
 
   it('should reject title exceeding limit', () => {
-    expect(validateTaskFields({ title: 'X'.repeat(LIMITS.TASK_TITLE_MAX + 1) })).toContain('long')
+    expect(errorOf(validateTaskFields({ title: 'X'.repeat(LIMITS.TASK_TITLE_MAX + 1) }))).toContain('long')
   })
 
   it('should reject description exceeding limit', () => {
-    expect(validateTaskFields({ description: 'Y'.repeat(LIMITS.TASK_DESCRIPTION_MAX + 1) })).toContain('long')
+    expect(errorOf(validateTaskFields({ description: 'Y'.repeat(LIMITS.TASK_DESCRIPTION_MAX + 1) }))).toContain('long')
   })
 
   it('should reject invalid category', () => {
-    expect(validateTaskFields({ category: 'invalid' as never })).toContain('category')
+    expect(errorOf(validateTaskFields({ category: 'invalid' as never }))).toContain('category')
   })
 
   it('should reject invalid scheduledTime format', () => {
-    expect(validateTaskFields({ scheduledTime: '25:00' })).toContain('time format')
-    expect(validateTaskFields({ scheduledTime: 'abc' })).toContain('time format')
+    expect(errorOf(validateTaskFields({ scheduledTime: '25:00' }))).toContain('time format')
+    expect(errorOf(validateTaskFields({ scheduledTime: 'abc' }))).toContain('time format')
   })
 
   it('should accept valid scheduledTime', () => {
-    expect(validateTaskFields({ scheduledTime: '14:30' })).toBeNull()
+    expect(isOk(validateTaskFields({ scheduledTime: '14:30' }))).toBe(true)
   })
 
   it('should accept null scheduledTime (clearing)', () => {
-    expect(validateTaskFields({ scheduledTime: null })).toBeNull()
+    expect(isOk(validateTaskFields({ scheduledTime: null }))).toBe(true)
   })
 
   it('should accept valid fields', () => {
-    expect(validateTaskFields({ title: 'Test', category: 'hot' })).toBeNull()
+    expect(isOk(validateTaskFields({ title: 'Test', category: 'hot' }))).toBe(true)
   })
 
   it('should accept partial update (no title)', () => {
-    expect(validateTaskFields({ category: 'warm' })).toBeNull()
+    expect(isOk(validateTaskFields({ category: 'warm' }))).toBe(true)
   })
 })
 
 describe('validateProjectNoteFields', () => {
   it('should reject empty content', () => {
-    expect(validateProjectNoteFields({ content: '' })).toContain('empty')
+    expect(errorOf(validateProjectNoteFields({ content: '' }))).toContain('empty')
   })
 
   it('should reject content exceeding limit', () => {
-    expect(validateProjectNoteFields({ content: 'X'.repeat(LIMITS.PROJECT_NOTE_CONTENT_MAX + 1) })).toContain('long')
+    expect(errorOf(validateProjectNoteFields({ content: 'X'.repeat(LIMITS.PROJECT_NOTE_CONTENT_MAX + 1) }))).toContain(
+      'long',
+    )
   })
 
   it('should accept valid content', () => {
-    expect(validateProjectNoteFields({ content: 'A valid note' })).toBeNull()
+    expect(isOk(validateProjectNoteFields({ content: 'A valid note' }))).toBe(true)
   })
 })
 
 describe('validateNoteFields', () => {
   it('should reject empty title', () => {
-    expect(validateNoteFields({ title: '' })).toContain('empty')
+    expect(errorOf(validateNoteFields({ title: '' }))).toContain('empty')
   })
 
   it('should reject title exceeding limit', () => {
-    expect(validateNoteFields({ title: 'X'.repeat(LIMITS.NOTE_TITLE_MAX + 1) })).toContain('long')
+    expect(errorOf(validateNoteFields({ title: 'X'.repeat(LIMITS.NOTE_TITLE_MAX + 1) }))).toContain('long')
   })
 
   it('should reject content exceeding limit', () => {
-    expect(validateNoteFields({ content: 'X'.repeat(LIMITS.NOTE_CONTENT_MAX + 1) })).toContain('long')
+    expect(errorOf(validateNoteFields({ content: 'X'.repeat(LIMITS.NOTE_CONTENT_MAX + 1) }))).toContain('long')
   })
 
   it('should accept valid fields', () => {
-    expect(validateNoteFields({ title: 'My Note', content: 'Content' })).toBeNull()
+    expect(isOk(validateNoteFields({ title: 'My Note', content: 'Content' }))).toBe(true)
   })
 })
 

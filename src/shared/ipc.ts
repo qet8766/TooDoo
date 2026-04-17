@@ -1,4 +1,5 @@
-import type { TaskCategory } from './types'
+import type { Note, ProjectNote, Task, TaskCategory } from './types'
+import type { Result } from './result'
 
 // IPC Channel constants - single source of truth
 export const IPC = {
@@ -103,3 +104,35 @@ export type AuthStatusPayload = {
 export type SyncStatusPayload = {
   status: 'synced' | 'syncing' | 'offline' | 'error' | 'auth-expired'
 }
+
+// --- Channel Map ---
+//
+// Maps each invoke-style channel to its payload and response shapes.
+// Consumed by the preload bridge's typed `invoke<K>()` helper so that
+// callers no longer need `as Promise<T>` casts — if the channel name
+// and the payload don't match this map, compilation fails.
+//
+// Only `invoke`-style channels are listed. One-way `send`-style channels
+// (QUICK_ADD_OPEN, WINDOW_RESIZE, etc.) are intentionally excluded —
+// they don't return values and don't benefit from response typing.
+
+export type ChannelMap = {
+  [IPC.TASKS_LIST]: { payload: void; response: Task[] }
+  [IPC.TASKS_ADD]: { payload: TaskCreatePayload; response: Result<Task> }
+  [IPC.TASKS_UPDATE]: { payload: TaskUpdatePayload; response: Result<Task | null> }
+  [IPC.TASKS_DELETE]: { payload: string; response: { id: string } }
+  [IPC.TASKS_REORDER]: { payload: TaskReorderPayload; response: { success: boolean } }
+  [IPC.TASKS_NOTE_ADD]: { payload: ProjectNoteCreatePayload; response: Result<ProjectNote> }
+  [IPC.TASKS_NOTE_UPDATE]: { payload: ProjectNoteUpdatePayload; response: Result<ProjectNote | null> }
+  [IPC.TASKS_NOTE_DELETE]: { payload: string; response: { id: string } }
+  [IPC.NOTES_LIST]: { payload: void; response: Note[] }
+  [IPC.NOTES_ADD]: { payload: NoteCreatePayload; response: Result<Note> }
+  [IPC.NOTES_UPDATE]: { payload: NoteUpdatePayload; response: Result<Note | null> }
+  [IPC.NOTES_DELETE]: { payload: string; response: { id: string } }
+  [IPC.AUTH_SIGN_IN]: { payload: AuthSignInPayload; response: Result<{ userId: string }> }
+  [IPC.AUTH_SIGN_OUT]: { payload: void; response: Result<void> }
+  [IPC.AUTH_STATUS]: { payload: void; response: AuthStatusPayload }
+  [IPC.SYNC_STATUS]: { payload: void; response: SyncStatusPayload }
+}
+
+export type ChannelKey = keyof ChannelMap

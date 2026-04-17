@@ -1,7 +1,8 @@
 // Postgres row types (matching 001_initial_schema.sql) and
 // bidirectional mappers between app types and Supabase rows.
 
-import type { Task, ProjectNote, Note, TaskCategory } from './types'
+import type { Task, ProjectNote, Note } from './types'
+import { normalizeCategory } from './categories'
 
 // --- Row types (what the Supabase JS client returns) ---
 
@@ -82,7 +83,7 @@ export const fromTaskRow = (row: TaskRow): Task => ({
   id: row.id,
   title: row.title,
   description: row.description ?? undefined,
-  category: row.category as TaskCategory,
+  category: normalizeCategory(row.category),
   isDone: row.is_done,
   sortOrder: row.sort_order,
   scheduledDate: row.scheduled_date != null ? fromDateString(row.scheduled_date) : undefined,

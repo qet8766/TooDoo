@@ -40,8 +40,8 @@ export const addNote = (p: { id: string; title: string; content: string }): Resu
 
   if (cache.some((n) => n.id === p.id)) return fail('Note with this ID already exists')
 
-  const fieldErr = validateNoteFields(p)
-  if (fieldErr) return fail(fieldErr)
+  const fieldRes = validateNoteFields(p)
+  if (!fieldRes.success) return fieldRes
 
   const now = Date.now()
   const note: Note = {
@@ -58,8 +58,8 @@ export const addNote = (p: { id: string; title: string; content: string }): Resu
 }
 
 export const updateNote = (p: { id: string; title?: string; content?: string }): Result<Note | null> => {
-  const fieldErr = validateNoteFields(p)
-  if (fieldErr) return fail(fieldErr)
+  const fieldRes = validateNoteFields(p)
+  if (!fieldRes.success) return fieldRes
 
   const existing = cache.find((n) => n.id === p.id)
   if (!existing || existing.deletedAt) return ok(null)

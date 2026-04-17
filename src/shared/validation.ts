@@ -1,5 +1,6 @@
 import type { Note, ProjectNote, Task, TaskCategory } from './types'
-import { ALL_CATEGORIES } from './categories'
+import { ALL_CATEGORIES, normalizeCategory } from './categories'
+import { ok, fail, type Result } from './result'
 import { generateNKeysBetween } from 'fractional-indexing'
 
 // --- Limits ---
@@ -14,8 +15,11 @@ export const LIMITS = {
 
 // --- Core combinator ---
 
-/** Returns the first error message whose condition is true, or null if all pass. */
-const validate = (rules: [boolean, string][]): string | null => rules.find(([fail]) => fail)?.[1] ?? null
+/** Returns a Result carrying the first failing rule's error, or ok(null) if all pass. */
+const validate = (rules: [boolean, string][]): Result<null> => {
+  const failed = rules.find(([cond]) => cond)
+  return failed ? fail(failed[1]) : ok(null)
+}
 
 // --- Format validators ---
 
@@ -35,7 +39,7 @@ export const validateTaskFields = (p: {
   description?: string | null
   category?: TaskCategory
   scheduledTime?: string | null
-}): string | null =>
+}): Result<null> =>
   validate([
     [p.title !== undefined && typeof p.title !== 'string', 'Title must be a string'],
     [typeof p.title === 'string' && !p.title.trim(), 'Title cannot be empty'],
@@ -49,14 +53,14 @@ export const validateTaskFields = (p: {
     ],
   ])
 
-export const validateProjectNoteFields = (p: { content: string }): string | null =>
+export const validateProjectNoteFields = (p: { content: string }): Result<null> =>
   validate([
     [typeof p.content !== 'string', 'Content must be a string'],
     [!p.content.trim(), 'Content cannot be empty'],
     [p.content.length > LIMITS.PROJECT_NOTE_CONTENT_MAX, 'Content too long'],
   ])
 
-export const validateNoteFields = (p: { title?: string; content?: string }): string | null =>
+export const validateNoteFields = (p: { title?: string; content?: string }): Result<null> =>
   validate([
     [p.title !== undefined && typeof p.title !== 'string', 'Title must be a string'],
     [typeof p.title === 'string' && !p.title.trim(), 'Title cannot be empty'],
@@ -90,19 +94,11 @@ export const sanitizeTask = (raw: unknown): Task | null => {
   if (typeof t.id !== 'string' || !t.id) return null
   if (typeof t.title !== 'string' || !t.title) return null
 
-  // Migrate legacy 'project' category to 'timed'
-  let category: TaskCategory = 'cool'
-  if (t.category === 'project') {
-    category = 'timed'
-  } else if (ALL_CATEGORIES.includes(t.category as TaskCategory)) {
-    category = t.category as TaskCategory
-  }
-
   return {
     id: t.id,
     title: t.title,
     description: typeof t.description === 'string' ? t.description : undefined,
-    category,
+    category: normalizeCategory(t.category),
     isDone: typeof t.isDone === 'boolean' ? t.isDone : false,
     createdAt: typeof t.createdAt === 'number' ? t.createdAt : Date.now(),
     updatedAt: typeof t.updatedAt === 'number' ? t.updatedAt : Date.now(),

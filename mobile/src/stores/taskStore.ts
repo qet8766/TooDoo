@@ -74,9 +74,9 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => {
 
     addTask: (p) =>
       queue.enqueue(() => {
-        const fieldErr = validateTaskFields(p)
-        if (fieldErr) {
-          console.warn('addTask validation:', fieldErr)
+        const fieldRes = validateTaskFields(p)
+        if (!fieldRes.success) {
+          console.warn('addTask validation:', fieldRes.error)
           return null
         }
 
@@ -106,9 +106,9 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => {
 
     updateTask: (p) =>
       queue.enqueue(() => {
-        const fieldErr = validateTaskFields(p)
-        if (fieldErr) {
-          console.warn('updateTask validation:', fieldErr)
+        const fieldRes = validateTaskFields(p)
+        if (!fieldRes.success) {
+          console.warn('updateTask validation:', fieldRes.error)
           return null
         }
 
@@ -179,9 +179,9 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => {
 
     addProjectNote: (taskId, content) =>
       queue.enqueue(() => {
-        const fieldErr = validateProjectNoteFields({ content })
-        if (fieldErr) {
-          console.warn('addProjectNote validation:', fieldErr)
+        const fieldRes = validateProjectNoteFields({ content })
+        if (!fieldRes.success) {
+          console.warn('addProjectNote validation:', fieldRes.error)
           return null
         }
 
@@ -213,9 +213,9 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => {
 
     updateProjectNote: (noteId, content) =>
       queue.enqueue(() => {
-        const fieldErr = validateProjectNoteFields({ content })
-        if (fieldErr) {
-          console.warn('updateProjectNote validation:', fieldErr)
+        const fieldRes = validateProjectNoteFields({ content })
+        if (!fieldRes.success) {
+          console.warn('updateProjectNote validation:', fieldRes.error)
           return null
         }
 

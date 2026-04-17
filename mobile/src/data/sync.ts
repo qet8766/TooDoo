@@ -9,6 +9,7 @@ import {
   toNoteRow,
   fromNoteRow,
 } from '@shared/supabase-types'
+import { mergeByUpdatedAt } from '@shared/merge'
 import { readJson, writeJson } from './persistence'
 import { getClient, getUserId, getAuthStatus } from './supabase'
 
@@ -108,27 +109,6 @@ export const pushEntity = (type: 'task' | 'projectNote' | 'note', entity: Task |
 
 // --- Pull ---
 
-const mergeProjectNotes = (local: ProjectNote[], remote: ProjectNote[]): ProjectNote[] | undefined => {
-  const merged: ProjectNote[] = []
-  const seenIds = new Set<string>()
-
-  for (const ln of local) {
-    seenIds.add(ln.id)
-    const rn = remote.find((r) => r.id === ln.id)
-    if (rn && rn.updatedAt >= ln.updatedAt) {
-      merged.push(rn)
-    } else {
-      merged.push(ln)
-    }
-  }
-
-  for (const rn of remote) {
-    if (!seenIds.has(rn.id)) merged.push(rn)
-  }
-
-  return merged.length > 0 ? merged : undefined
-}
-
 export const pull = async (): Promise<void> => {
   const netState = await NetInfo.fetch()
   if (!netState.isConnected || !getAuthStatus().isSignedIn) return
@@ -169,56 +149,23 @@ export const pull = async (): Promise<void> => {
 
     await enqueue(() => {
       // --- Merge tasks ---
+      // Project notes merge runs independently of the parent task merge so
+      // that cross-device note-only edits survive even when the parent task
+      // is stale.
       const localTasks = getAllTasksRaw()
-      const mergedTasks: Task[] = []
-      const seenTaskIds = new Set<string>()
+      const localTasksById = new Map(localTasks.map((t) => [t.id, t]))
 
-      for (const local of localTasks) {
-        seenTaskIds.add(local.id)
-        const remote = remoteTasks.find((t) => t.id === local.id)
-        if (remote && remote.updatedAt >= local.updatedAt) {
-          const mergedNotes = mergeProjectNotes(local.projectNotes ?? [], remoteNotesByTask.get(local.id) ?? [])
-          mergedTasks.push({ ...remote, projectNotes: mergedNotes })
-        } else {
-          const remoteNotesForTask = remoteNotesByTask.get(local.id) ?? []
-          if (remoteNotesForTask.length > 0) {
-            const mergedNotes = mergeProjectNotes(local.projectNotes ?? [], remoteNotesForTask)
-            mergedTasks.push({ ...local, projectNotes: mergedNotes })
-          } else {
-            mergedTasks.push(local)
-          }
-        }
-      }
-
-      for (const remote of remoteTasks) {
-        if (!seenTaskIds.has(remote.id)) {
-          const notes = remoteNotesByTask.get(remote.id) ?? []
-          mergedTasks.push({ ...remote, projectNotes: notes.length > 0 ? notes : undefined })
-        }
-      }
+      const mergedTasks = mergeByUpdatedAt(localTasks, remoteTasks).map((task) => {
+        const localPns = localTasksById.get(task.id)?.projectNotes ?? []
+        const remotePns = remoteNotesByTask.get(task.id) ?? []
+        const mergedPns = mergeByUpdatedAt(localPns, remotePns)
+        return { ...task, projectNotes: mergedPns.length > 0 ? mergedPns : undefined }
+      })
 
       replaceTaskCache(mergedTasks)
 
       // --- Merge notes ---
-      const localNotes = getAllNotesRaw()
-      const mergedNotes: Note[] = []
-      const seenNoteIds = new Set<string>()
-
-      for (const local of localNotes) {
-        seenNoteIds.add(local.id)
-        const remote = remoteNotes.find((n) => n.id === local.id)
-        if (remote && remote.updatedAt >= local.updatedAt) {
-          mergedNotes.push(remote)
-        } else {
-          mergedNotes.push(local)
-        }
-      }
-
-      for (const remote of remoteNotes) {
-        if (!seenNoteIds.has(remote.id)) mergedNotes.push(remote)
-      }
-
-      replaceNoteCache(mergedNotes)
+      replaceNoteCache(mergeByUpdatedAt(getAllNotesRaw(), remoteNotes))
     })
 
     setSyncStatus('synced')

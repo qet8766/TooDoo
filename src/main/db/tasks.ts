@@ -70,8 +70,8 @@ export const addTask = (p: {
 
   if (cache.some((t) => t.id === p.id)) return fail('Task with this ID already exists')
 
-  const fieldErr = validateTaskFields(p)
-  if (fieldErr) return fail(fieldErr)
+  const fieldRes = validateTaskFields(p)
+  if (!fieldRes.success) return fieldRes
 
   const now = Date.now()
   const sortKey = generateKeyBetween(null, firstSortKey(p.category))
@@ -104,8 +104,8 @@ export const updateTask = (p: {
   scheduledDate?: number | null
   scheduledTime?: string | null
 }): Result<Task | null> => {
-  const fieldErr = validateTaskFields(p)
-  if (fieldErr) return fail(fieldErr)
+  const fieldRes = validateTaskFields(p)
+  if (!fieldRes.success) return fieldRes
 
   const existing = cache.find((t) => t.id === p.id)
   if (!existing || existing.deletedAt) return ok(null)
@@ -168,8 +168,8 @@ export const addProjectNote = (p: { id: string; taskId: string; content: string 
   const idErr = validateId(p.id)
   if (idErr) return fail(idErr)
 
-  const fieldErr = validateProjectNoteFields(p)
-  if (fieldErr) return fail(fieldErr)
+  const fieldRes = validateProjectNoteFields(p)
+  if (!fieldRes.success) return fieldRes
 
   const task = cache.find((t) => t.id === p.taskId)
   if (!task || task.deletedAt) return fail('Task not found')
@@ -195,8 +195,8 @@ export const addProjectNote = (p: { id: string; taskId: string; content: string 
 }
 
 export const updateProjectNote = (p: { id: string; content: string }): Result<ProjectNote | null> => {
-  const fieldErr = validateProjectNoteFields(p)
-  if (fieldErr) return fail(fieldErr)
+  const fieldRes = validateProjectNoteFields(p)
+  if (!fieldRes.success) return fieldRes
 
   const found = findTaskByProjectNote(p.id)
   if (!found || found.note.deletedAt) return ok(null)
