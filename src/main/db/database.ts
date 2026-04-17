@@ -48,21 +48,26 @@ export const updateTask = (p: TaskUpdatePayload): Promise<Result<Task | null>> =
     return result
   })
 
-export const reorderTask = (taskId: string, targetIndex: number): Promise<boolean> =>
+export const reorderTask = (taskId: string, targetIndex: number): Promise<Result<{ id: string }>> =>
   queue.enqueue(() => {
-    const success = taskOps.reorderTask(taskId, targetIndex)
-    if (success) {
+    const beforeUpdatedAt = taskOps.getTaskById(taskId)?.updatedAt
+    const result = taskOps.reorderTask(taskId, targetIndex)
+    if (result.success) {
       const task = taskOps.getTaskById(taskId)
-      if (task) pushEntity('task', task)
+      // Skip push on no-op (same-position); only push when the mutation bumped updatedAt.
+      if (task && task.updatedAt !== beforeUpdatedAt) pushEntity('task', task)
     }
-    return success
+    return result
   })
 
-export const deleteTask = (id: string): Promise<void> =>
+export const deleteTask = (id: string): Promise<Result<{ id: string }>> =>
   queue.enqueue(() => {
-    taskOps.deleteTask(id)
-    const task = taskOps.getTaskById(id)
-    if (task) pushEntity('task', task)
+    const result = taskOps.deleteTask(id)
+    if (result.success) {
+      const task = taskOps.getTaskById(id)
+      if (task) pushEntity('task', task)
+    }
+    return result
   })
 
 // --- Project Note Operations (queue-wrapped) ---
@@ -89,12 +94,12 @@ export const updateProjectNote = (p: ProjectNoteUpdatePayload): Promise<Result<P
     return result
   })
 
-export const deleteProjectNote = (id: string): Promise<void> =>
+export const deleteProjectNote = (id: string): Promise<Result<{ id: string }>> =>
   queue.enqueue(() => {
     // Get the parent task id before deletion modifies the note
     const found = taskOps.getAllTasksRaw().find((t) => t.projectNotes?.some((n) => n.id === id))
-    taskOps.deleteProjectNote(id)
-    if (found) {
+    const result = taskOps.deleteProjectNote(id)
+    if (result.success && found) {
       // Re-fetch task to get updated state (with deletedAt on the note)
       const task = taskOps.getTaskById(found.id)
       if (task) pushEntity('task', task)
@@ -102,6 +107,7 @@ export const deleteProjectNote = (id: string): Promise<void> =>
       const deletedNote = task?.projectNotes?.find((n) => n.id === id)
       if (deletedNote) pushEntity('projectNote', deletedNote)
     }
+    return result
   })
 
 // --- Notetank Note Operations (queue-wrapped) ---
@@ -122,9 +128,12 @@ export const updateNote = (p: NoteUpdatePayload): Promise<Result<Note | null>> =
     return result
   })
 
-export const deleteNote = (id: string): Promise<void> =>
+export const deleteNote = (id: string): Promise<Result<{ id: string }>> =>
   queue.enqueue(() => {
-    noteOps.deleteNote(id)
-    const note = noteOps.getNoteById(id)
-    if (note) pushEntity('note', note)
+    const result = noteOps.deleteNote(id)
+    if (result.success) {
+      const note = noteOps.getNoteById(id)
+      if (note) pushEntity('note', note)
+    }
+    return result
   })

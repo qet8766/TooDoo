@@ -135,13 +135,15 @@ export const updateTask = (p: {
   return ok(updated)
 }
 
-export const reorderTask = (taskId: string, targetIndex: number): boolean => {
+export const reorderTask = (taskId: string, targetIndex: number): Result<{ id: string }> => {
   const task = cache.find((t) => t.id === taskId && !t.deletedAt)
-  if (!task) return false
+  if (!task) return fail('Task not found')
 
   const sorted = activeCategoryTasks(task.category)
   const currentIndex = sorted.findIndex((t) => t.id === taskId)
-  if (currentIndex === -1 || currentIndex === targetIndex) return false
+  if (currentIndex === -1) return fail('Task not found in its category')
+  // Same position — no-op success. No mutation, no push.
+  if (currentIndex === targetIndex) return ok({ id: taskId })
 
   // Remove current task to compute neighbors at target position
   const withoutCurrent = sorted.filter((t) => t.id !== taskId)
@@ -153,13 +155,16 @@ export const reorderTask = (taskId: string, targetIndex: number): boolean => {
   cache = cache.map((t) => (t.id === taskId ? { ...t, sortOrder: newKey, updatedAt: now } : t))
 
   persist()
-  return true
+  return ok({ id: taskId })
 }
 
-export const deleteTask = (id: string): void => {
+export const deleteTask = (id: string): Result<{ id: string }> => {
+  const existing = cache.find((t) => t.id === id)
+  if (!existing || existing.deletedAt) return fail('Task not found')
   const now = Date.now()
   cache = cache.map((t) => (t.id === id ? { ...t, deletedAt: now, updatedAt: now } : t))
   persist()
+  return ok({ id })
 }
 
 // --- Project Notes ---
@@ -219,9 +224,9 @@ export const updateProjectNote = (p: { id: string; content: string }): Result<Pr
   return ok(updated)
 }
 
-export const deleteProjectNote = (id: string): void => {
+export const deleteProjectNote = (id: string): Result<{ id: string }> => {
   const found = findTaskByProjectNote(id)
-  if (!found) return
+  if (!found || found.note.deletedAt) return fail('Project note not found')
 
   const now = Date.now()
   const updatedTask: Task = {
@@ -232,6 +237,7 @@ export const deleteProjectNote = (id: string): void => {
 
   cache = cache.map((t) => (t.id === found.task.id ? updatedTask : t))
   persist()
+  return ok({ id })
 }
 
 // --- Sync Helpers ---

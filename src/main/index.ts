@@ -29,7 +29,8 @@ import {
   closeNoteEditorWindow,
 } from './windows'
 import { registerShortcut, unregisterShortcut, SHORTCUTS } from './shortcuts'
-import { handleWithBroadcast, handleWithNotesBroadcast, handleSimple } from './ipc-factory'
+import { handle } from './ipc-factory'
+import { broadcastTaskChange, broadcastNotesChange } from './broadcast'
 
 // --- Single Instance Lock ---
 // When a new instance starts, the OLD instance quits to let the new one take over.
@@ -133,42 +134,30 @@ app.on('before-quit', () => {
 })
 
 // --- Auth & Sync Handlers ---
-handleSimple(IPC.AUTH_SIGN_IN, (p: AuthSignInPayload) => signIn(p.email, p.password))
-handleSimple(IPC.AUTH_SIGN_OUT, () => signOut())
-handleSimple(IPC.AUTH_STATUS, () => getAuthStatus())
-handleSimple(IPC.SYNC_STATUS, () => ({ status: getSyncStatus(), reason: getSyncReason() }))
+handle(IPC.AUTH_SIGN_IN, (p: AuthSignInPayload) => signIn(p.email, p.password))
+handle(IPC.AUTH_SIGN_OUT, () => signOut())
+handle(IPC.AUTH_STATUS, () => getAuthStatus())
+handle(IPC.SYNC_STATUS, () => ({ status: getSyncStatus(), reason: getSyncReason() }))
 
 // --- Task Handlers ---
-handleSimple(IPC.TASKS_LIST, getTasks)
-handleWithBroadcast(IPC.TASKS_ADD, addTask)
-handleWithBroadcast(IPC.TASKS_UPDATE, updateTask)
-handleWithBroadcast(IPC.TASKS_DELETE, async (id: string) => {
-  await deleteTask(id)
-  return { id }
-})
-handleWithBroadcast(IPC.TASKS_REORDER, async (p: { taskId: string; targetIndex: number }) => {
-  const success = await reorderTask(p.taskId, p.targetIndex)
-  return { success }
-})
-handleWithBroadcast(IPC.TASKS_NOTE_ADD, addProjectNote)
-handleWithBroadcast(IPC.TASKS_NOTE_UPDATE, updateProjectNote)
-handleWithBroadcast(IPC.TASKS_NOTE_DELETE, async (id: string) => {
-  await deleteProjectNote(id)
-  return { id }
-})
+handle(IPC.TASKS_LIST, getTasks)
+handle(IPC.TASKS_ADD, addTask, broadcastTaskChange)
+handle(IPC.TASKS_UPDATE, updateTask, broadcastTaskChange)
+handle(IPC.TASKS_DELETE, deleteTask, broadcastTaskChange)
+handle(IPC.TASKS_REORDER, (p: { taskId: string; targetIndex: number }) => reorderTask(p.taskId, p.targetIndex), broadcastTaskChange)
+handle(IPC.TASKS_NOTE_ADD, addProjectNote, broadcastTaskChange)
+handle(IPC.TASKS_NOTE_UPDATE, updateProjectNote, broadcastTaskChange)
+handle(IPC.TASKS_NOTE_DELETE, deleteProjectNote, broadcastTaskChange)
 
 ipcMain.on(IPC.QUICK_ADD_OPEN, (_event: IpcMainEvent, category: string) => {
   createQuickAddWindow(category)
 })
 
 // --- Notetank Notes Handlers ---
-handleSimple(IPC.NOTES_LIST, getNotes)
-handleWithNotesBroadcast(IPC.NOTES_ADD, addNote)
-handleWithNotesBroadcast(IPC.NOTES_UPDATE, updateNote)
-handleWithNotesBroadcast(IPC.NOTES_DELETE, async (id: string) => {
-  await deleteNote(id)
-  return { id }
-})
+handle(IPC.NOTES_LIST, getNotes)
+handle(IPC.NOTES_ADD, addNote, broadcastNotesChange)
+handle(IPC.NOTES_UPDATE, updateNote, broadcastNotesChange)
+handle(IPC.NOTES_DELETE, deleteNote, broadcastNotesChange)
 
 ipcMain.on(IPC.NOTE_EDITOR_OPEN, (_event: IpcMainEvent, noteId?: string) => {
   createNoteEditorWindow(noteId)
@@ -176,14 +165,6 @@ ipcMain.on(IPC.NOTE_EDITOR_OPEN, (_event: IpcMainEvent, noteId?: string) => {
 
 ipcMain.on(IPC.NOTE_EDITOR_CLOSE, () => {
   closeNoteEditorWindow()
-})
-
-// Switch view by navigating within the same window (no flicker)
-ipcMain.on(IPC.SWITCH_VIEW, (_event: IpcMainEvent, view: 'toodoo' | 'notetank') => {
-  const win = getTooDooOverlay()
-  if (!win) return
-  // Navigate within the same window using hash routing
-  win.webContents.executeJavaScript(`window.location.hash = '/${view}'`)
 })
 
 // --- Focus Mode (Minimize/Expand) ---

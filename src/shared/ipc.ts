@@ -31,7 +31,6 @@ export const IPC = {
   QUICK_ADD_OPEN: 'quick-add:open',
   NOTE_EDITOR_OPEN: 'note-editor:open',
   NOTE_EDITOR_CLOSE: 'note-editor:close',
-  SWITCH_VIEW: 'switch-view',
   WINDOW_SET_MINIMIZED: 'window:set-minimized',
   WINDOW_SET_CALENDAR_OPEN: 'window:set-calendar-open',
   WINDOW_RESIZE: 'window:resize',
@@ -133,15 +132,15 @@ export type ChannelMap = {
   [IPC.TASKS_LIST]: { payload: void; response: Task[] }
   [IPC.TASKS_ADD]: { payload: TaskCreatePayload; response: Result<Task> }
   [IPC.TASKS_UPDATE]: { payload: TaskUpdatePayload; response: Result<Task | null> }
-  [IPC.TASKS_DELETE]: { payload: string; response: { id: string } }
-  [IPC.TASKS_REORDER]: { payload: TaskReorderPayload; response: { success: boolean } }
+  [IPC.TASKS_DELETE]: { payload: string; response: Result<{ id: string }> }
+  [IPC.TASKS_REORDER]: { payload: TaskReorderPayload; response: Result<{ id: string }> }
   [IPC.TASKS_NOTE_ADD]: { payload: ProjectNoteCreatePayload; response: Result<ProjectNote> }
   [IPC.TASKS_NOTE_UPDATE]: { payload: ProjectNoteUpdatePayload; response: Result<ProjectNote | null> }
-  [IPC.TASKS_NOTE_DELETE]: { payload: string; response: { id: string } }
+  [IPC.TASKS_NOTE_DELETE]: { payload: string; response: Result<{ id: string }> }
   [IPC.NOTES_LIST]: { payload: void; response: Note[] }
   [IPC.NOTES_ADD]: { payload: NoteCreatePayload; response: Result<Note> }
   [IPC.NOTES_UPDATE]: { payload: NoteUpdatePayload; response: Result<Note | null> }
-  [IPC.NOTES_DELETE]: { payload: string; response: { id: string } }
+  [IPC.NOTES_DELETE]: { payload: string; response: Result<{ id: string }> }
   [IPC.AUTH_SIGN_IN]: { payload: AuthSignInPayload; response: Result<{ userId: string }> }
   [IPC.AUTH_SIGN_OUT]: { payload: void; response: Result<void> }
   [IPC.AUTH_STATUS]: { payload: void; response: AuthStatusPayload }

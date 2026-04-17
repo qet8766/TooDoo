@@ -66,7 +66,6 @@ const makeMockToodoo = (tasks: Task[]): MockToodoo => {
     onAuthStatusChanged: vi.fn(() => () => {}),
     onSyncStatusChanged: vi.fn(() => () => {}),
     openQuickAdd: vi.fn(),
-    switchView: vi.fn(),
     setMinimized: vi.fn(),
     setCalendarOpen: vi.fn(),
     resizeWindow: vi.fn(),

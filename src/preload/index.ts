@@ -96,10 +96,6 @@ const noteEditorApi = {
   close: () => ipcRenderer.send(IPC.NOTE_EDITOR_CLOSE),
 }
 
-// For seamless navigation, prefer using window.location.hash directly in the renderer;
-// this IPC-based method is kept for compatibility but may cause flicker.
-const switchView = (view: 'toodoo' | 'notetank') => ipcRenderer.send(IPC.SWITCH_VIEW, view)
-
 const setMinimized = (isMinimized: boolean) => ipcRenderer.send(IPC.WINDOW_SET_MINIMIZED, isMinimized)
 
 const setCalendarOpen = (isOpen: boolean) => ipcRenderer.send(IPC.WINDOW_SET_CALENDAR_OPEN, isOpen)
@@ -119,7 +115,6 @@ const api = {
   onAuthStatusChanged,
   sync: syncApi,
   onSyncStatusChanged,
-  switchView,
   setMinimized,
   setCalendarOpen,
   resizeWindow,

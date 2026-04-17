@@ -13,7 +13,7 @@ Grounded against actual files: Overlay.tsx=812 lines, desktop sync.ts=364, mobil
 | 4 Mobile parity | ✅ done | `937d100` + Phase 4b | 260 (232 desktop + 28 mobile) + Playwright 13/13 |
 | 5-lite Alias dedupe | ✅ done | Phase 5-lite | 260 + Playwright 13/13 unchanged |
 | 5 Monorepo | ⏸ deferred | — | — |
-| 6 Polish | ⬜ | — | — |
+| 6 Polish | ✅ done | Phase 6 | 262 (234 desktop + 28 mobile) + Playwright 13/13 |
 
 Tag `refactor-baseline` at `621298a` for quick revert.
 
@@ -100,12 +100,18 @@ Full monorepo (`packages/shared`, `packages/sync-core`, npm workspaces) deferred
 
 Revisit after Phase 6 polish + a period of observed stability.
 
-## Phase 6 — Polish (1 day)
+## Phase 6 — Polish ✅
 
-- Collapse `ipc-factory.ts`'s three factories into one with optional `onSuccess`.
-- Remove `switchView` and any dead IPC constants (grep first).
-- Preload uniformity: all mutations return `Result<T>`, all subscriptions return unsubscribe.
-- Delete `sync-logic.md` (already removed in working tree); don't resurrect.
+Final cleanup pass. Four items landed cleanly:
+
+- [x] **One `handle()` factory**: `src/main/ipc-factory.ts` collapsed from three (`handleSimple` / `handleWithBroadcast` / `handleWithNotesBroadcast`) into one `handle(channel, handler, onSuccess?)`. Mutation channels pass `broadcastTaskChange` / `broadcastNotesChange` as `onSuccess`; reads omit it. `isFailedResult` guard retained so failed `Result<T>` still skips the broadcast. 16 call sites in `src/main/index.ts` updated.
+- [x] **`SWITCH_VIEW` IPC removed**: main handler did one thing — `window.location.hash = '/${view}'` — so the renderer now does it directly. Deleted `IPC.SWITCH_VIEW`, the preload sender, the main handler, and the test mock. 2 call sites migrated to hash navigation.
+- [x] **Delete/reorder uniformity**: `deleteTask` / `deleteProjectNote` / `deleteNote` / `reorderTask` all return `Result<{ id: string }>`. Database facade wrappers updated; reorder no-op (same position) now returns `ok` but skips the push by comparing `updatedAt` before/after. ChannelMap responses switched to `Result<{ id: string }>` — renderer/Notetank delete handlers now branch on `result.success` and rollback optimistic UI on failure.
+- [x] **`sync-logic.md`**: already deleted in working tree; no action needed.
+
+Subscriptions already returned unsubscribe — no work required.
+
+Tests: 234 desktop (up from 232; added a no-op reorder test and a delete-note failure test in `database-sync.test.ts`) + 28 mobile + Playwright 13/13. Build clean.
 
 ---
 

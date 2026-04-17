@@ -151,7 +151,7 @@ describe('updateTask', () => {
 describe('deleteTask', () => {
   it('should call pushEntity with task that has deletedAt', async () => {
     const deletedTask = { ...taskFixture, deletedAt: 9999, updatedAt: 9999 }
-    vi.mocked(taskOps.deleteTask).mockImplementation(() => {})
+    vi.mocked(taskOps.deleteTask).mockReturnValue({ success: true, data: { id: 'task-1' } })
     vi.mocked(taskOps.getTaskById).mockReturnValue(deletedTask)
 
     await deleteTask('task-1')
@@ -159,8 +159,8 @@ describe('deleteTask', () => {
     expect(mockPushEntity).toHaveBeenCalledWith('task', expect.objectContaining({ deletedAt: 9999 }))
   })
 
-  it('should NOT call pushEntity when task not found after delete', async () => {
-    vi.mocked(taskOps.deleteTask).mockImplementation(() => {})
+  it('should NOT call pushEntity on failed delete', async () => {
+    vi.mocked(taskOps.deleteTask).mockReturnValue({ success: false, error: 'Task not found' })
     vi.mocked(taskOps.getTaskById).mockReturnValue(undefined)
 
     await deleteTask('missing')
@@ -170,13 +170,26 @@ describe('deleteTask', () => {
 })
 
 describe('reorderTask', () => {
-  it('should call pushEntity with reordered task on success', async () => {
-    vi.mocked(taskOps.reorderTask).mockReturnValue(true)
-    vi.mocked(taskOps.getTaskById).mockReturnValue({ ...taskFixture, sortOrder: 'b0' })
+  it('should call pushEntity with reordered task when updatedAt changes', async () => {
+    // Before: updatedAt=2000. After reorder: updatedAt=3000 (bumped by taskOps).
+    vi.mocked(taskOps.getTaskById)
+      .mockReturnValueOnce({ ...taskFixture, updatedAt: 2000 })
+      .mockReturnValueOnce({ ...taskFixture, sortOrder: 'b0', updatedAt: 3000 })
+    vi.mocked(taskOps.reorderTask).mockReturnValue({ success: true, data: { id: 'task-1' } })
 
     await reorderTask('task-1', 2)
 
     expect(mockPushEntity).toHaveBeenCalledWith('task', expect.objectContaining({ sortOrder: 'b0' }))
+  })
+
+  it('should NOT push on no-op reorder (same position, updatedAt unchanged)', async () => {
+    // Before and after return the same task; no updatedAt bump means no push.
+    vi.mocked(taskOps.getTaskById).mockReturnValue({ ...taskFixture, updatedAt: 2000 })
+    vi.mocked(taskOps.reorderTask).mockReturnValue({ success: true, data: { id: 'task-1' } })
+
+    await reorderTask('task-1', 0)
+
+    expect(mockPushEntity).not.toHaveBeenCalled()
   })
 })
 
@@ -221,7 +234,7 @@ describe('deleteProjectNote', () => {
     const parentTask: Task = { ...taskFixture, projectNotes: [deletedNote] }
 
     vi.mocked(taskOps.getAllTasksRaw).mockReturnValue([{ ...taskFixture, projectNotes: [projectNoteFixture] }])
-    vi.mocked(taskOps.deleteProjectNote).mockImplementation(() => {})
+    vi.mocked(taskOps.deleteProjectNote).mockReturnValue({ success: true, data: { id: 'pn-1' } })
     vi.mocked(taskOps.getTaskById).mockReturnValue(parentTask)
 
     await deleteProjectNote('pn-1')
@@ -232,7 +245,7 @@ describe('deleteProjectNote', () => {
 
   it('should NOT call pushEntity when note not found', async () => {
     vi.mocked(taskOps.getAllTasksRaw).mockReturnValue([])
-    vi.mocked(taskOps.deleteProjectNote).mockImplementation(() => {})
+    vi.mocked(taskOps.deleteProjectNote).mockReturnValue({ success: false, error: 'Project note not found' })
 
     await deleteProjectNote('nonexistent')
 
@@ -264,11 +277,19 @@ describe('updateNote', () => {
 describe('deleteNote', () => {
   it('should call pushEntity with note that has deletedAt', async () => {
     const deletedNote = { ...noteFixture, deletedAt: 9999, updatedAt: 9999 }
-    vi.mocked(noteOps.deleteNote).mockImplementation(() => {})
+    vi.mocked(noteOps.deleteNote).mockReturnValue({ success: true, data: { id: 'note-1' } })
     vi.mocked(noteOps.getNoteById).mockReturnValue(deletedNote)
 
     await deleteNote('note-1')
 
     expect(mockPushEntity).toHaveBeenCalledWith('note', expect.objectContaining({ deletedAt: 9999 }))
+  })
+
+  it('should NOT call pushEntity on failed delete', async () => {
+    vi.mocked(noteOps.deleteNote).mockReturnValue({ success: false, error: 'Note not found' })
+
+    await deleteNote('missing')
+
+    expect(mockPushEntity).not.toHaveBeenCalled()
   })
 })

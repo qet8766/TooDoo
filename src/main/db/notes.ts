@@ -76,10 +76,13 @@ export const updateNote = (p: { id: string; title?: string; content?: string }):
   return ok(updated)
 }
 
-export const deleteNote = (id: string): void => {
+export const deleteNote = (id: string): Result<{ id: string }> => {
+  const existing = cache.find((n) => n.id === id)
+  if (!existing || existing.deletedAt) return fail('Note not found')
   const now = Date.now()
   cache = cache.map((n) => (n.id === id ? { ...n, deletedAt: now, updatedAt: now } : n))
   persist()
+  return ok({ id })
 }
 
 // --- Sync Helpers ---

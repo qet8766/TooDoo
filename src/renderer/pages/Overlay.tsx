@@ -118,13 +118,15 @@ const TooDooOverlay = () => {
 
       // If same category, reorder
       if (task.category === category) {
-        await window.toodoo.tasks.reorder({ taskId, targetIndex })
+        const reorderResult = await window.toodoo.tasks.reorder({ taskId, targetIndex })
+        if (!reorderResult.success) console.error('Failed to reorder task:', reorderResult.error)
       } else {
         // Move to different category (at target position)
         const result = await window.toodoo.tasks.update({ id: taskId, category })
         if (result.success) {
           // After moving, reorder to specific position
-          await window.toodoo.tasks.reorder({ taskId, targetIndex })
+          const reorderResult = await window.toodoo.tasks.reorder({ taskId, targetIndex })
+          if (!reorderResult.success) console.error('Failed to reorder task:', reorderResult.error)
         }
       }
     },
@@ -156,8 +158,12 @@ const TooDooOverlay = () => {
 
   const removeTask = async (taskId: string) => {
     disarmDelete(taskId)
-    await window.toodoo.tasks.remove(taskId)
-    setTasks((prev) => prev.filter((item) => item.id !== taskId))
+    const result = await window.toodoo.tasks.remove(taskId)
+    if (result.success) {
+      setTasks((prev) => prev.filter((item) => item.id !== taskId))
+    } else {
+      console.error('Failed to remove task:', result.error)
+    }
   }
 
   const handleTaskDeleteClick = (taskId: string) => {
@@ -209,12 +215,16 @@ const TooDooOverlay = () => {
 
   const deleteNote = async (taskId: string, noteId: string) => {
     disarmDelete(noteId)
-    await window.toodoo.tasks.removeNote(noteId)
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId ? { ...t, projectNotes: (t.projectNotes ?? []).filter((n) => n.id !== noteId) } : t,
-      ),
-    )
+    const result = await window.toodoo.tasks.removeNote(noteId)
+    if (result.success) {
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId ? { ...t, projectNotes: (t.projectNotes ?? []).filter((n) => n.id !== noteId) } : t,
+        ),
+      )
+    } else {
+      console.error('Failed to remove note:', result.error)
+    }
   }
 
   const handleNoteDeleteClick = (taskId: string, noteId: string) => {
@@ -288,7 +298,9 @@ const TooDooOverlay = () => {
               <button
                 data-testid="btn-view-notetank"
                 className="feature-btn no-drag"
-                onClick={() => window.toodoo.switchView('notetank')}
+                onClick={() => {
+                  window.location.hash = '/notetank'
+                }}
                 title="Switch to Notes"
               >
                 Notes

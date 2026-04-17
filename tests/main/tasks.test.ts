@@ -203,7 +203,7 @@ describe('reorderTask', () => {
   it('should reorder within category', () => {
     // Current order: r-3 (smallest key), r-2, r-1 (largest key) -- newest first
     const result = reorderTask('r-1', 0) // Move r-1 to top
-    expect(result).toBe(true)
+    expect(result.success).toBe(true)
 
     const tasks = getTasks()
       .filter((t) => t.category === 'hot')
@@ -223,13 +223,18 @@ describe('reorderTask', () => {
     expect(after.find((t) => t.id === 'r-3')!.sortOrder).toBe(r3Before)
   })
 
-  it('should return false for non-existent task', () => {
-    expect(reorderTask('nonexistent', 0)).toBe(false)
+  it('should fail for non-existent task', () => {
+    const result = reorderTask('nonexistent', 0)
+    expect(result.success).toBe(false)
   })
 
-  it('should return false for same position', () => {
+  it('should be a no-op success for same position', () => {
     // r-3 is already at index 0
-    expect(reorderTask('r-3', 0)).toBe(false)
+    const before = getTasks().find((t) => t.id === 'r-3')!.updatedAt
+    const result = reorderTask('r-3', 0)
+    expect(result.success).toBe(true)
+    // updatedAt should not change on a no-op reorder
+    expect(getTasks().find((t) => t.id === 'r-3')!.updatedAt).toBe(before)
   })
 
   it('should place reordered task between correct neighbors', () => {

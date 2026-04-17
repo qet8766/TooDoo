@@ -52,8 +52,12 @@ const NotetankOverlay = () => {
 
   const handleDeleteNote = async (noteId: string) => {
     disarmDelete(noteId)
-    await window.toodoo.notes.remove(noteId)
-    setNotes((prev) => prev.filter((n) => n.id !== noteId))
+    const result = await window.toodoo.notes.remove(noteId)
+    if (result.success) {
+      setNotes((prev) => prev.filter((n) => n.id !== noteId))
+    } else {
+      console.error('Failed to remove note:', result.error)
+    }
   }
 
   const handleNoteDeleteClick = (noteId: string) => {
@@ -77,7 +81,7 @@ const NotetankOverlay = () => {
   }
 
   const switchToTasks = () => {
-    window.toodoo.switchView('toodoo')
+    window.location.hash = '/toodoo'
   }
 
   return (
