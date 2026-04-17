@@ -53,7 +53,7 @@ Port TooDoo to React Native Android and add Supabase as a shared backend for cro
 
 - [x] `supabase status` shows running/linked project
 - [x] Tables visible in Supabase dashboard with correct columns and constraints
-- [ ] RLS active: anonymous queries return empty results
+- [x] RLS active: anonymous queries return empty results
 - [x] `npm run dev` — app works identically to before
 - [x] Create, edit, reorder, delete tasks — all work
 - [x] Inspect `tasks.json` — deleted tasks have `deletedAt` field, `sortOrder` is a string
@@ -241,8 +241,8 @@ Port TooDoo to React Native Android and add Supabase as a shared backend for cro
 
 - [ ] All animations feel smooth (60fps)
 - [ ] App handles large task lists (50+ tasks) smoothly
-- [ ] `npm run test` in root → all Electron tests pass
-- [ ] `npm run build` in root → Electron builds successfully
+- [x] `npm run test` in root → all Electron tests pass (202/202)
+- [x] `npm run build` in root → Electron builds successfully
 
 ---
 
