@@ -8,6 +8,15 @@ import renderer from 'vite-plugin-electron-renderer'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+// Single source of truth for Vite path aliases — mirrors tsconfig.base.json.
+const aliases = {
+  '@renderer': path.resolve(__dirname, 'src/renderer'),
+  '@main': path.resolve(__dirname, 'src/main'),
+  '@preload': path.resolve(__dirname, 'src/preload'),
+  '@shared': path.resolve(__dirname, 'src/shared'),
+}
+const sharedAlias = { '@shared': aliases['@shared'] }
+
 const DEV_SERVER_HOST = '127.0.0.1'
 const DEFAULT_DEV_SERVER_PORT = 5173
 
@@ -61,11 +70,7 @@ export default defineConfig(async ({ command }) => {
             return startup(undefined, { env })
           },
           vite: {
-            resolve: {
-              alias: {
-                '@shared': path.resolve(__dirname, 'src/shared'),
-              },
-            },
+            resolve: { alias: sharedAlias },
             build: {
               outDir: 'dist-electron',
               rollupOptions: {
@@ -82,11 +87,7 @@ export default defineConfig(async ({ command }) => {
             index: path.join(__dirname, 'src/preload/index.ts'),
           },
           vite: {
-            resolve: {
-              alias: {
-                '@shared': path.resolve(__dirname, 'src/shared'),
-              },
-            },
+            resolve: { alias: sharedAlias },
             build: {
               outDir: 'dist-electron',
               rollupOptions: {
@@ -101,14 +102,7 @@ export default defineConfig(async ({ command }) => {
       }),
       renderer(),
     ],
-    resolve: {
-      alias: {
-        '@renderer': path.resolve(__dirname, 'src/renderer'),
-        '@main': path.resolve(__dirname, 'src/main'),
-        '@preload': path.resolve(__dirname, 'src/preload'),
-        '@shared': path.resolve(__dirname, 'src/shared'),
-      },
-    },
+    resolve: { alias: aliases },
     build: {
       outDir: 'dist',
       chunkSizeWarningLimit: 1000,

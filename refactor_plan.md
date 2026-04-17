@@ -11,7 +11,8 @@ Grounded against actual files: Overlay.tsx=812 lines, desktop sync.ts=364, mobil
 | 2 Sync robustness | ✅ done | `92993b5` | 251 (232 desktop + 19 mobile) + Playwright 13/13 |
 | 3 Overlay split | ✅ done | `67b5eb8` | 251 (232 desktop + 19 mobile) + Playwright 13/13 |
 | 4 Mobile parity | ✅ done | `937d100` + Phase 4b | 260 (232 desktop + 28 mobile) + Playwright 13/13 |
-| 5 Monorepo | ⬜ | — | — |
+| 5-lite Alias dedupe | ✅ done | Phase 5-lite | 260 + Playwright 13/13 unchanged |
+| 5 Monorepo | ⏸ deferred | — | — |
 | 6 Polish | ⬜ | — | — |
 
 Tag `refactor-baseline` at `621298a` for quick revert.
@@ -77,20 +78,27 @@ Shipped in two commits under the Phase 4 umbrella, following "one refactor, one 
 - **Phase 4b**: Mobile stores match desktop `Result<T>` surface where desktop uses it (`addTask`/`updateTask`/`addProjectNote`/`updateProjectNote`/`addNote`/`updateNote`). `deleteX` / `reorderTask` keep `void`/`boolean` to preserve desktop parity. `authStore` unchanged — `doSignIn` has its own error channel via `error` state rendered inline in `SignInScreen`. New `toastStore` + `ToastHost` (40 lines, Animated fade, mounted once in `App.tsx`) + `handleResult` helper in `lib/showError.ts`. 7 mobile call sites updated to surface errors via toast; `navigation.goBack()` is gated on success so validation errors keep the user on screen.
 - **Tests added**: 5 in `taskInteractionStore.test.ts` (arm/confirm, auto-disarm timer, independent sets, disarmAll, edit flow) + 4 in `taskStore.result.test.ts` (ok/fail discriminant, missing task, missing parent). Extended jest `transformIgnorePatterns` to cover `uuid` + `fractional-indexing` ESM. 19 → 28 mobile tests.
 
-## Phase 5 — Monorepo extraction (3–4 days, only after 1–4)
+## Phase 5-lite — TS path alias dedupe ✅
 
-```
-packages/
-  shared/          # src/shared/* moves here verbatim
-  sync-core/       # platform-agnostic pull/push/merge/dirty-tracking
-apps/
-  desktop/
-  mobile/
-```
+Took the 80% value slice of the originally-planned Phase 5: centralize the TypeScript path aliases without moving any files or introducing npm workspaces / `sync-core`. One commit, zero blast.
 
-- `sync-core` exposes `createSyncEngine({ persistence, network, supabase })`. Desktop injects fs + `net.isOnline()`; mobile injects AsyncStorage + NetInfo.
-- Root `tsconfig.base.json` centralizes `@shared/*`; remove duplicated alias blocks in `vite.config.ts` (4 copies → 1) and `mobile/metro.config.js`.
-- Ship only once Phases 1–4 prove interfaces stable. If interfaces still churn, defer.
+- **New**: `tsconfig.base.json` holds the single copy of `{ @renderer, @main, @preload, @shared }` paths.
+- `tsconfig.app.json` / `tsconfig.node.json` now `"extends": "./tsconfig.base.json"` — each sheds ~8 lines. 3 TS path blocks → 1.
+- `mobile/tsconfig.json` uses TS-5 array extends: `["@react-native/typescript-config", "../tsconfig.base.json"]`. Its `baseUrl`/`paths` override deleted.
+- `vite.config.ts`: extracted `const aliases` at module scope, reused via `resolve: { alias: aliases }` for the renderer and `resolve: { alias: sharedAlias }` for the main/preload electron bundles. 3 literal alias blocks → 1 const.
+- **Left alone** (separate resolution mechanism, not worth the conversion risk): `vitest.config.ts` (own alias block), `mobile/metro.config.js` (custom `resolveRequest`), `mobile/babel.config.js` (module-resolver).
+
+Verification: desktop `tsc -b` clean, 232 desktop + 28 mobile tests green, Playwright 13/13 unchanged, mobile `tsc` reports only the same 2 pre-existing test errors from before Phase 4.
+
+## Phase 5 — Monorepo extraction ⏸ deferred
+
+Full monorepo (`packages/shared`, `packages/sync-core`, npm workspaces) deferred. Rationale:
+
+- Phase 4 interfaces just landed (Result adoption, toast primitive). Per the plan's own deferral clause — "Ship only once Phases 1–4 prove interfaces stable. If interfaces still churn, defer" — one commit-cycle of stability isn't enough.
+- `sync-core` is a design exercise (unifying desktop `net.isOnline()` + BrowserWindow focus vs mobile NetInfo + AppState behind `createSyncEngine({ persistence, network, supabase })`), not code motion. Worth doing properly once the current shape proves stable.
+- Moving `src/shared/*` changes 98 imports across 55 files + Metro + Babel + Vitest + 3 tsconfigs. Phase 5-lite captured the TS-side maintenance win (`tsconfig.base.json`) without any file moves.
+
+Revisit after Phase 6 polish + a period of observed stability.
 
 ## Phase 6 — Polish (1 day)
 
