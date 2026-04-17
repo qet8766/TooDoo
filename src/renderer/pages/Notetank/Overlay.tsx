@@ -81,10 +81,15 @@ const NotetankOverlay = () => {
   }
 
   return (
-    <div className="overlay-shell notetank-shell" style={{ fontSize: `${fontSize}px` }}>
+    <div data-testid="notetank" className="overlay-shell notetank-shell" style={{ fontSize: `${fontSize}px` }}>
       <div className="overlay-topbar-fixed" title="Drag to move">
         <div className="topbar-features">
-          <button className="feature-btn no-drag" onClick={switchToTasks} title="Switch to Tasks">
+          <button
+            data-testid="btn-view-toodoo"
+            className="feature-btn no-drag"
+            onClick={switchToTasks}
+            title="Switch to Tasks"
+          >
             Tasks
           </button>
         </div>
@@ -108,7 +113,7 @@ const NotetankOverlay = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-          <button className="small-button add-note-btn" onClick={handleNewNote}>
+          <button data-testid="btn-new-note" className="small-button add-note-btn" onClick={handleNewNote}>
             + New
           </button>
         </div>
@@ -120,9 +125,14 @@ const NotetankOverlay = () => {
         ) : (
           <div className="note-list">
             {filteredNotes.map((note) => (
-              <div key={note.id} className={`note-card ${expandedNotes.has(note.id) ? 'expanded' : ''}`}>
+              <div
+                key={note.id}
+                data-testid={`note-${note.id}`}
+                className={`note-card ${expandedNotes.has(note.id) ? 'expanded' : ''}`}
+              >
                 <div className="note-card-header">
                   <div
+                    data-testid={`note-delete-${note.id}`}
                     className={`checkbox delete-checkbox ${armedForDelete.has(note.id) ? 'armed' : ''}`}
                     onClick={() => handleNoteDeleteClick(note.id)}
                   >
@@ -132,7 +142,11 @@ const NotetankOverlay = () => {
                     <h4 className="note-title">{note.title}</h4>
                     <span className="note-meta">{new Date(note.updatedAt).toLocaleDateString()}</span>
                   </div>
-                  <button className="small-button" onClick={() => handleEditNote(note.id)}>
+                  <button
+                    data-testid={`note-edit-${note.id}`}
+                    className="small-button"
+                    onClick={() => handleEditNote(note.id)}
+                  >
                     Edit
                   </button>
                 </div>

@@ -104,14 +104,14 @@ const NoteEditor = () => {
 
   if (isLoading) {
     return (
-      <div className="quick-add-shell note-editor-shell">
+      <div data-testid="note-editor" className="quick-add-shell note-editor-shell">
         <p className="muted">Loading...</p>
       </div>
     )
   }
 
   return (
-    <div className="quick-add-shell note-editor-shell">
+    <div data-testid="note-editor" className="quick-add-shell note-editor-shell">
       <div className="quick-add-header">
         <div>
           <p className="muted">{noteId ? 'Edit note' : 'New note'}</p>
@@ -126,12 +126,14 @@ const NoteEditor = () => {
         <input
           ref={titleRef}
           autoFocus
+          data-testid="ne-title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Note title"
           className="no-drag"
         />
         <textarea
+          data-testid="ne-content"
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder="Note content... (Ctrl+Enter to save)"
@@ -139,7 +141,7 @@ const NoteEditor = () => {
           className="no-drag note-content-editor"
           onKeyDown={handleTextareaKeyDown}
         />
-        <button className="button" type="submit">
+        <button data-testid="ne-save" className="button" type="submit">
           {noteId ? 'Save' : 'Create'}
         </button>
       </form>

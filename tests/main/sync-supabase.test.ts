@@ -25,6 +25,7 @@ const mockAuth = {
   setSession: vi.fn(),
   getUser: vi.fn(),
   getSession: vi.fn(),
+  onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
 }
 
 vi.mock('@supabase/supabase-js', () => ({

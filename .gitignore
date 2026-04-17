@@ -27,6 +27,7 @@ Thumbs.db
 
 # Test artifacts
 test-results/
+playwright-report/
 
 # Windows error artifacts
 nul

@@ -14,14 +14,33 @@ let client: SupabaseClient | null = null
 let userId: string | null = null
 let sessionFilePath = ''
 
+export const isSyncDisabled = (): boolean => process.env.TOODOO_DISABLE_SYNC === '1'
+
 export const initSupabase = (userDataPath: string): void => {
   sessionFilePath = path.join(userDataPath, 'auth-session.json')
   userId = null
+  if (isSyncDisabled()) {
+    client = null
+    return
+  }
   client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
       persistSession: false,
       autoRefreshToken: true,
     },
+  })
+
+  // Supabase rotates the refresh token on every auto-refresh. Without this
+  // listener, the rotated token is only in memory — next launch reads the stale
+  // refresh token from disk and sign-in appears to have expired.
+  client.auth.onAuthStateChange((event, session) => {
+    if (session) {
+      persistSession(session)
+      if (session.user) userId = session.user.id
+    } else if (event === 'SIGNED_OUT') {
+      clearSession()
+    }
+    broadcastAuthStatus()
   })
 }
 
@@ -54,7 +73,8 @@ const broadcastAuthStatus = (): void => {
 }
 
 export const signIn = async (email: string, password: string): Promise<Result<{ userId: string }>> => {
-  const supabase = getClient()
+  if (!client) return fail('Sync disabled')
+  const supabase = client
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) return fail(error.message)
   if (!data.session || !data.user) return fail('No session returned')
@@ -66,8 +86,12 @@ export const signIn = async (email: string, password: string): Promise<Result<{ 
 }
 
 export const signOut = async (): Promise<Result<void>> => {
-  const supabase = getClient()
-  const { error } = await supabase.auth.signOut()
+  if (!client) {
+    clearSession()
+    broadcastAuthStatus()
+    return ok(undefined)
+  }
+  const { error } = await client.auth.signOut()
   if (error) console.warn('Sign-out error (clearing session anyway):', error.message)
 
   clearSession()
@@ -76,11 +100,12 @@ export const signOut = async (): Promise<Result<void>> => {
 }
 
 export const restoreSession = async (): Promise<boolean> => {
+  if (!client) return false
   const raw = readJsonFile(sessionFilePath)
   if (!raw || typeof raw !== 'object' || !('access_token' in raw)) return false
 
   const tokens = raw as { access_token: string; refresh_token: string }
-  const supabase = getClient()
+  const supabase = client
 
   const { error: setError } = await supabase.auth.setSession({
     access_token: tokens.access_token,

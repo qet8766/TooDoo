@@ -84,7 +84,7 @@ const QuickAdd = () => {
   }
 
   return (
-    <div className="quick-add-shell">
+    <div data-testid="quick-add" className="quick-add-shell">
       <div className="quick-add-header">
         <div>
           <p className="muted">Quick add</p>
@@ -98,12 +98,14 @@ const QuickAdd = () => {
       <form ref={formRef} className="input-stack" onSubmit={handleSubmit}>
         <input
           autoFocus
+          data-testid="qa-title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Title"
           className="no-drag"
         />
         <textarea
+          data-testid="qa-description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Description (optional)"
@@ -115,6 +117,7 @@ const QuickAdd = () => {
           <div className="quick-add-schedule">
             <input
               type="date"
+              data-testid="qa-date"
               value={scheduledDate}
               onChange={(e) => setScheduledDate(e.target.value)}
               className="no-drag"
@@ -129,7 +132,7 @@ const QuickAdd = () => {
             />
           </div>
         )}
-        <button className="button" type="submit">
+        <button data-testid="qa-submit" className="button" type="submit">
           Add {CATEGORIES[category].title}
         </button>
       </form>

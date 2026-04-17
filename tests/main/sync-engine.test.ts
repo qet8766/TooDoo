@@ -47,6 +47,7 @@ vi.mock('../../src/main/db/sync/supabase', () => ({
   getClient: vi.fn(() => ({ from: mockFrom, auth: { getUser: mockGetUser } })),
   getUserId: vi.fn(() => 'user-123'),
   getAuthStatus: vi.fn(() => ({ isSignedIn: true, userId: 'user-123' })),
+  isSyncDisabled: vi.fn(() => false),
 }))
 
 // Mock tasks and notes modules

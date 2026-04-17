@@ -396,10 +396,11 @@ const TooDooOverlay = () => {
 
   return (
     <div
+      data-testid="overlay"
       className={`overlay-shell toodoo-compact ${isScorchingMode ? 'scorching-mode' : ''} ${isMinimized ? 'minimized' : ''}`}
       style={{ fontSize: `${fontSize}px` }}
     >
-      <div className="overlay-topbar-fixed" title="Drag to move">
+      <div data-testid="topbar" className="overlay-topbar-fixed" title="Drag to move">
         {isMinimized ? (
           <div className="minimized-bar no-drag">
             {visibleCategories.map((cat) => (
@@ -417,6 +418,7 @@ const TooDooOverlay = () => {
         ) : (
           <>
             <button
+              data-testid="quick-add-scorching"
               className="scorching-dot no-drag"
               onClick={() => window.toodoo.openQuickAdd('scorching')}
               title="Add scorching task (CapsLock)"
@@ -428,6 +430,7 @@ const TooDooOverlay = () => {
             </button>
             <div className="topbar-features">
               <button
+                data-testid="btn-view-notetank"
                 className="feature-btn no-drag"
                 onClick={() => window.toodoo.switchView('notetank')}
                 title="Switch to Notes"
@@ -435,6 +438,7 @@ const TooDooOverlay = () => {
                 Notes
               </button>
               <button
+                data-testid="btn-calendar"
                 className={`feature-btn no-drag ${isCalendarOpen ? 'active' : ''}`}
                 onClick={() => setIsCalendarOpen((prev) => !prev)}
                 title="Toggle Calendar"
@@ -477,6 +481,7 @@ const TooDooOverlay = () => {
               return (
                 <section
                   key={cat.key}
+                  data-testid={`category-${cat.key}`}
                   className={`task-section compact tone-${cat.tone}`}
                   onDragOver={allowDrop}
                   onDrop={handleDropOnCategory(cat.key)}
@@ -500,6 +505,7 @@ const TooDooOverlay = () => {
                       return (
                         <div
                           key={task.id}
+                          data-testid={`task-${task.id}`}
                           className={`task-card no-drag ${cat.key === 'timed' ? 'timed-card' : ''} ${isDropTarget ? 'drop-target' : ''} ${draggingTaskId === task.id ? 'dragging' : ''}`}
                           draggable={!form}
                           onDragStart={handleDragStart(task.id)}
@@ -509,6 +515,7 @@ const TooDooOverlay = () => {
                         >
                           <div className="task-card-header">
                             <div
+                              data-testid={`task-delete-${task.id}`}
                               className={`checkbox delete-checkbox ${armedForDelete.has(task.id) ? 'armed' : ''}`}
                               onClick={() => handleTaskDeleteClick(task.id)}
                             >
@@ -576,7 +583,7 @@ const TooDooOverlay = () => {
                               </div>
                             ) : (
                               <div className="task-text" onDoubleClick={() => startEdit(task)}>
-                                <div className="task-title">
+                                <div className="task-title" data-task-title>
                                   {task.title}
                                   {task.scheduledDate &&
                                     (cat.key === 'timed' ? (
@@ -711,7 +718,7 @@ const TooDooOverlay = () => {
       )}
 
       {showSignIn && (
-        <div className="modal-backdrop">
+        <div data-testid="signin-modal" className="modal-backdrop">
           <div className="modal-card no-drag">
             <h4>Sign in to sync</h4>
             <input
@@ -735,7 +742,11 @@ const TooDooOverlay = () => {
               <button className="button" onClick={handleSignIn} disabled={signingIn}>
                 {signingIn ? 'Signing in...' : 'Sign In'}
               </button>
-              <button className="small-button" onClick={() => setShowSignIn(false)}>
+              <button
+                data-testid="btn-signin-skip"
+                className="small-button"
+                onClick={() => setShowSignIn(false)}
+              >
                 Skip
               </button>
             </div>

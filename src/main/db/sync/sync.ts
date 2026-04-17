@@ -13,7 +13,7 @@ import {
 import { readJsonFile, writeJsonFile } from '../store'
 import * as taskOps from '../tasks'
 import * as noteOps from '../notes'
-import { getClient, getUserId, getAuthStatus } from './supabase'
+import { getClient, getUserId, getAuthStatus, isSyncDisabled } from './supabase'
 import { broadcast, broadcastTaskChange, broadcastNotesChange } from '../../broadcast'
 import { app, net } from '../../electron'
 
@@ -340,6 +340,11 @@ const pollConnectivity = (): void => {
 // --- Initialization ---
 
 export const initSync = (userDataPath: string, enqueueFn: <T>(fn: () => T) => Promise<T>): void => {
+  if (isSyncDisabled()) {
+    enqueue = enqueueFn
+    setSyncStatus('offline')
+    return
+  }
   metaFilePath = path.join(userDataPath, 'sync-meta.json')
   enqueue = enqueueFn
   pushChain = Promise.resolve()
