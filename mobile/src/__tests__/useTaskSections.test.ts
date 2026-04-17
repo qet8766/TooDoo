@@ -24,6 +24,7 @@ const task = (overrides: Partial<Task> = {}): Task => ({
   id: overrides.id ?? 't',
   title: overrides.title ?? 'x',
   category: overrides.category ?? 'hot',
+  isDone: false,
   sortOrder: overrides.sortOrder ?? 'a0',
   createdAt: 1_700_000_000_000,
   updatedAt: 1_700_000_000_000,

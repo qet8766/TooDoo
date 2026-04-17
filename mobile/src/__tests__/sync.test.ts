@@ -73,7 +73,7 @@ import {
 
 // --- Helpers ---
 
-const flushAsync = (ms = 20) => new Promise((r) => setTimeout(r, ms))
+const flushAsync = (ms = 20) => new Promise<void>((r) => setTimeout(() => r(), ms))
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
   id: overrides.id ?? 't1',

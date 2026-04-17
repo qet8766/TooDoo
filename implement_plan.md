@@ -87,6 +87,7 @@ Port TooDoo to React Native Android and add Supabase as a shared backend for cro
 
 - `src/main/db/sync/supabase.ts`
 - `src/main/db/sync/sync.ts`
+- `scripts/smoke-live-sync.mjs` — live Supabase roundtrip test (reuses saved session, exercises schema + server-clock trigger + RLS + tombstones + merge rule)
 
 ### Files Modified
 
@@ -99,15 +100,17 @@ Port TooDoo to React Native Android and add Supabase as a shared backend for cro
 
 ### Verification
 
-- [ ] `npm run dev` — app starts, works offline as before
-- [ ] Sign in with email/password → session persists across restarts
-- [ ] Tasks/notes upload to Supabase (check dashboard)
-- [ ] Switch focus away and back → pulls latest from Supabase
-- [ ] Disconnect network → make changes → reconnect → dirty entities push, then pull
-- [ ] Offline project-note delete → reconnect → deletion syncs to Supabase (tombstone sent)
-- [x] `npm run test` — all tests pass (165/165)
+- [ ] `npm run dev` — app starts, works offline as before (UI check)
+- [x] Sign in with email/password → session persists across restarts (smoke script reuses saved refresh token successfully)
+- [x] Tasks/notes upload to Supabase (smoke script verifies insert + RLS + roundtrip for `tasks`, `notes`, `project_notes`)
+- [ ] Switch focus away and back → pulls latest from Supabase (pull query verified; UI trigger still manual)
+- [ ] Disconnect network → make changes → reconnect → dirty entities push, then pull (dirty-detection covered by `sync-engine.test.ts`; end-to-end network toggle still manual)
+- [x] Offline project-note delete → reconnect → deletion syncs to Supabase (smoke script verifies `project_notes.deleted_at` persists as a tombstone)
+- [x] Server trigger overrides client `updated_at` (smoke script: merge rule relies on this)
+- [x] `npm run test` — all tests pass (234/234)
 - [x] `npm run build` succeeds
-- [x] `npm run lint` — no errors
+- [x] `npm run lint` — exit 0 (7 pre-existing React-compiler memoization hints, unrelated to sync)
+- [x] `node scripts/smoke-live-sync.mjs` — 13/13 checks pass
 
 ---
 
@@ -241,7 +244,8 @@ Port TooDoo to React Native Android and add Supabase as a shared backend for cro
 
 - [ ] All animations feel smooth (60fps)
 - [ ] App handles large task lists (50+ tasks) smoothly
-- [x] `npm run test` in root → all Electron tests pass (202/202)
+- [x] Both-offline merge sanity — server `set_updated_at` trigger makes last-write-wins deterministic (smoke script verifies server ignores client `updated_at`)
+- [x] `npm run test` in root → all Electron tests pass (234/234)
 - [x] `npm run build` in root → Electron builds successfully
 
 ---
@@ -249,6 +253,6 @@ Port TooDoo to React Native Android and add Supabase as a shared backend for cro
 ## Current Progress
 
 - [x] **Gate 1** — Foundation (Supabase + shared types + soft delete + fractional sort)
-- [x] **Gate 2** — Electron Sync (auth, push-on-mutate, pull-on-focus, server timestamps)
-- [~] **Gate 3** — Mobile Foundation (scaffold + data layer) — code complete, needs Android SDK for device testing
-- [~] **Gate 4** — Mobile Screens (tasks + calendar + notes + polish) — code complete, needs Android SDK for device testing
+- [x] **Gate 2** — Electron Sync (auth, push-on-mutate, pull-on-focus, server timestamps) — server-side verified by `scripts/smoke-live-sync.mjs` (13/13)
+- [~] **Gate 3** — Mobile Foundation (scaffold + data layer) — code complete, sync half proven by smoke script, UI needs device
+- [~] **Gate 4** — Mobile Screens (tasks + calendar + notes + polish) — code complete, merge rule proven by smoke script, UI needs device
