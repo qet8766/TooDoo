@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { initSupabase, signIn, signOut, restoreSession, getAuthStatus } from '../data/supabase'
+import { pull } from '../data/sync'
 
 type AuthState = {
   isSignedIn: boolean
@@ -29,6 +30,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
       userId: status.userId,
       isLoading: false,
     })
+    if (restored) pull()
   },
 
   doSignIn: async (email, password) => {
@@ -39,6 +41,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set) => ({
       return false
     }
     set({ isSignedIn: true, userId: result.userId, isLoading: false, error: null })
+    pull()
     return true
   },
 
