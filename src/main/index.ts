@@ -19,7 +19,7 @@ import {
 import { app, BrowserWindow, ipcMain } from './electron'
 import { IPC, type AuthSignInPayload } from '@shared/ipc'
 import { initSupabase, restoreSession, signIn, signOut, getAuthStatus } from './db/sync/supabase'
-import { initSync, getSyncStatus, syncDirtyAndPull } from './db/sync/sync'
+import { initSync, getSyncStatus, getSyncReason, syncDirtyAndPull } from './db/sync/sync'
 import {
   configureRendererTarget,
   createTooDooOverlay,
@@ -136,7 +136,7 @@ app.on('before-quit', () => {
 handleSimple(IPC.AUTH_SIGN_IN, (p: AuthSignInPayload) => signIn(p.email, p.password))
 handleSimple(IPC.AUTH_SIGN_OUT, () => signOut())
 handleSimple(IPC.AUTH_STATUS, () => getAuthStatus())
-handleSimple(IPC.SYNC_STATUS, () => ({ status: getSyncStatus() }))
+handleSimple(IPC.SYNC_STATUS, () => ({ status: getSyncStatus(), reason: getSyncReason() }))
 
 // --- Task Handlers ---
 handleSimple(IPC.TASKS_LIST, getTasks)

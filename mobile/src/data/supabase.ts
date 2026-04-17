@@ -66,6 +66,17 @@ const clearSession = async (): Promise<void> => {
   userId = null
 }
 
+/**
+ * Flip auth state to signed-out without going through Supabase.
+ * Called by the sync engine when a push reveals the session is no longer
+ * valid (401/403 or JWT-expired Postgrest error). Mirrors the desktop's
+ * IPC broadcast of isSignedIn=false on auth-expired.
+ */
+export const markAuthExpired = async (): Promise<void> => {
+  await clearSession()
+  notifyListeners()
+}
+
 export const signIn = async (email: string, password: string): Promise<{ userId: string } | { error: string }> => {
   const supabase = getClient()
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })

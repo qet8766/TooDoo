@@ -63,7 +63,15 @@ vi.mock('../../src/main/db/notes', () => ({
   replaceCache: vi.fn(),
 }))
 
-import { pushEntity, initSync, pull, syncDirtyAndPull, getSyncStatus, getDirtyCount } from '@main/db/sync/sync'
+import {
+  pushEntity,
+  initSync,
+  pull,
+  syncDirtyAndPull,
+  getSyncStatus,
+  getSyncReason,
+  getDirtyCount,
+} from '@main/db/sync/sync'
 import { getAuthStatus, getClient, getUserId } from '@main/db/sync/supabase'
 import * as taskOps from '@main/db/tasks'
 import * as noteOps from '@main/db/notes'
@@ -421,6 +429,78 @@ describe('getSyncStatus', () => {
   it('should return current status', () => {
     const status = getSyncStatus()
     expect(['synced', 'syncing', 'offline', 'error', 'auth-expired']).toContain(status)
+  })
+})
+
+// --- Error reason classification ---
+
+describe('push error reason classification', () => {
+  const makeTask = (): Task => ({
+    id: 't',
+    title: 'x',
+    category: 'hot',
+    isDone: false,
+    createdAt: 1000,
+    updatedAt: 2000,
+    sortOrder: 'a0',
+  })
+
+  it('classifies "JWT expired" as auth', async () => {
+    mockUpsert.mockResolvedValue({ error: { message: 'JWT expired' } })
+    // Keep the auth health check returning a valid user so the status stays
+    // on 'error' with reason='auth' rather than transitioning to 'auth-expired'.
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'user-123' } }, error: null })
+    pushEntity('task', makeTask())
+    await new Promise((r) => setTimeout(r, 50))
+    expect(getSyncStatus()).toBe('error')
+    expect(getSyncReason()).toBe('auth')
+  })
+
+  it('classifies PostgREST PGRST301 code as auth', async () => {
+    mockUpsert.mockResolvedValue({ error: { code: 'PGRST301', message: 'JWT missing' } })
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'u' } }, error: null }) // auth still valid
+    pushEntity('task', makeTask())
+    await new Promise((r) => setTimeout(r, 50))
+    expect(getSyncStatus()).toBe('error')
+    expect(getSyncReason()).toBe('auth')
+  })
+
+  it('classifies Postgres 23xxx code as validation', async () => {
+    mockUpsert.mockResolvedValue({ error: { code: '23505', message: 'duplicate key' } })
+    pushEntity('task', makeTask())
+    await new Promise((r) => setTimeout(r, 50))
+    expect(getSyncStatus()).toBe('error')
+    expect(getSyncReason()).toBe('validation')
+  })
+
+  it('classifies a thrown fetch failure as network', async () => {
+    const fetchErr = new Error('Failed to fetch')
+    mockUpsert.mockRejectedValue(fetchErr)
+    pushEntity('task', makeTask())
+    await new Promise((r) => setTimeout(r, 50))
+    expect(getSyncStatus()).toBe('error')
+    expect(getSyncReason()).toBe('network')
+  })
+
+  it('classifies an opaque server message as unknown', async () => {
+    mockUpsert.mockResolvedValue({ error: { message: 'something went wrong' } })
+    pushEntity('task', makeTask())
+    await new Promise((r) => setTimeout(r, 50))
+    expect(getSyncStatus()).toBe('error')
+    expect(getSyncReason()).toBe('unknown')
+  })
+
+  it('clears reason when a successful push brings dirtyIds back to 0', async () => {
+    mockUpsert.mockResolvedValueOnce({ error: { code: '23505', message: 'dup' } })
+    pushEntity('task', makeTask())
+    await new Promise((r) => setTimeout(r, 50))
+    expect(getSyncReason()).toBe('validation')
+
+    mockUpsert.mockResolvedValueOnce({ error: null })
+    pushEntity('task', { ...makeTask(), updatedAt: 3000 })
+    await new Promise((r) => setTimeout(r, 50))
+    expect(getSyncStatus()).toBe('synced')
+    expect(getSyncReason()).toBeUndefined()
   })
 })
 
@@ -830,7 +910,9 @@ describe('auth expiry detection', () => {
   })
 
   it('should not re-check auth within cooldown period', async () => {
-    mockUpsert.mockResolvedValue({ error: { message: 'Fail' } })
+    // Auth-classified error: triggers maybeCheckAuth on each push failure,
+    // but the cooldown must stop getUser from being called more than once.
+    mockUpsert.mockResolvedValue({ error: { message: 'JWT expired' } })
     mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'Invalid' } })
 
     const task1: Task = {

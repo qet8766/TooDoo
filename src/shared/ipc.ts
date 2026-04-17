@@ -101,8 +101,21 @@ export type AuthStatusPayload = {
 }
 
 // Sync payload types
+
+/**
+ * Classification for push/pull failures. Surfaced via the `reason` field of
+ * SyncStatusPayload when `status === 'error'`. 'auth-expired' status carries
+ * its own semantics and does not set `reason`.
+ *   - 'network'    — transport failure (fetch/abort/offline transition)
+ *   - 'auth'       — JWT expired, RLS violation, or missing credentials
+ *   - 'validation' — Postgres integrity constraint (unique, check, FK)
+ *   - 'unknown'    — unclassified; logged for investigation
+ */
+export type SyncReason = 'network' | 'auth' | 'validation' | 'unknown'
+
 export type SyncStatusPayload = {
   status: 'synced' | 'syncing' | 'offline' | 'error' | 'auth-expired'
+  reason?: SyncReason
 }
 
 // --- Channel Map ---

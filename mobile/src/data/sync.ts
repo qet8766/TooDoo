@@ -1,6 +1,7 @@
 import { AppState, type AppStateStatus } from 'react-native'
 import NetInfo from '@react-native-community/netinfo'
 import type { Task, ProjectNote, Note } from '@shared/types'
+import type { SyncReason } from '@shared/ipc'
 import {
   toTaskRow,
   fromTaskRow,
@@ -11,26 +12,30 @@ import {
 } from '@shared/supabase-types'
 import { mergeByUpdatedAt } from '@shared/merge'
 import { readJson, writeJson } from './persistence'
-import { getClient, getUserId, getAuthStatus } from './supabase'
+import { getClient, getUserId, getAuthStatus, markAuthExpired } from './supabase'
 
-type SyncStatus = 'synced' | 'syncing' | 'offline' | 'error'
+type SyncStatus = 'synced' | 'syncing' | 'offline' | 'error' | 'auth-expired'
+type UpsertResult = { ok: true } | { ok: false; reason: SyncReason }
 
 const META_KEY = '@toodoo/sync-meta'
 
 let syncStatus: SyncStatus = 'offline'
+let syncReason: SyncReason | undefined = undefined
 let lastSyncedAt = 0
 let wasOnline = false
 let pushChain: Promise<void> = Promise.resolve()
+const dirtyIds = new Set<string>()
 
-// Callbacks injected by stores — avoids circular dependency
+// Callbacks injected by stores — avoids circular dependency.
 let getAllTasksRaw: () => Task[] = () => []
 let replaceTaskCache: (tasks: Task[]) => void = () => {}
 let getAllNotesRaw: () => Note[] = () => []
 let replaceNoteCache: (notes: Note[]) => void = () => {}
 let enqueue: <T>(fn: () => T) => Promise<T> = (fn) => Promise.resolve(fn())
 
-// Status change listeners
-type StatusListener = (status: SyncStatus) => void
+// --- Status ---
+
+type StatusListener = (status: SyncStatus, reason?: SyncReason) => void
 const statusListeners: Set<StatusListener> = new Set()
 
 export const onSyncStatusChanged = (fn: StatusListener): (() => void) => {
@@ -39,11 +44,58 @@ export const onSyncStatusChanged = (fn: StatusListener): (() => void) => {
 }
 
 export const getSyncStatus = (): SyncStatus => syncStatus
+export const getSyncReason = (): SyncReason | undefined => syncReason
+export const getDirtyCount = (): number => dirtyIds.size
 
-const setSyncStatus = (status: SyncStatus): void => {
-  if (status === syncStatus) return
+const setSyncStatus = (status: SyncStatus, reason?: SyncReason): void => {
+  if (status === syncStatus && reason === syncReason) return
   syncStatus = status
-  statusListeners.forEach((fn) => fn(status))
+  syncReason = reason
+  statusListeners.forEach((fn) => fn(status, reason))
+}
+
+// --- Error classification (parity with desktop sync.ts) ---
+
+const classifyPostgrestError = (error: { code?: string; message?: string }): SyncReason => {
+  const msg = (error.message ?? '').toLowerCase()
+  const code = error.code ?? ''
+  if (code === 'PGRST301' || code === '42501') return 'auth'
+  if (msg.includes('jwt') || msg.includes('unauthor') || msg.includes('invalid api key')) return 'auth'
+  if (code.startsWith('23')) return 'validation'
+  return 'unknown'
+}
+
+const classifyException = (err: unknown): SyncReason => {
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase()
+    if (err.name === 'AbortError' || msg.includes('fetch') || msg.includes('network')) return 'network'
+  }
+  return 'unknown'
+}
+
+// --- Auth health check (parity with desktop) ---
+
+const AUTH_CHECK_COOLDOWN_MS = 30_000
+let lastAuthCheckAt = 0
+
+const checkAuthHealth = async (): Promise<void> => {
+  try {
+    const client = getClient()
+    const { data, error } = await client.auth.getUser()
+    if (error || !data.user) {
+      setSyncStatus('auth-expired')
+      await markAuthExpired()
+    }
+  } catch {
+    // Network error during check — not an auth problem, ignore.
+  }
+}
+
+const maybeCheckAuth = (): void => {
+  if (Date.now() - lastAuthCheckAt > AUTH_CHECK_COOLDOWN_MS) {
+    lastAuthCheckAt = Date.now()
+    void checkAuthHealth()
+  }
 }
 
 // --- Persistence ---
@@ -61,49 +113,56 @@ const saveMeta = async (): Promise<void> => {
 
 // --- Push ---
 
-const doUpsert = async (type: 'task' | 'projectNote' | 'note', entity: Task | ProjectNote | Note): Promise<boolean> => {
+const doUpsert = async (
+  type: 'task' | 'projectNote' | 'note',
+  entity: Task | ProjectNote | Note,
+): Promise<UpsertResult> => {
   const uid = getUserId()!
   const client = getClient()
 
   try {
-    if (type === 'task') {
-      const row = toTaskRow(entity as Task, uid)
-      const { error } = await client.from('tasks').upsert(row)
-      if (error) {
-        console.warn('Push task failed:', error.message)
-        return false
-      }
-    } else if (type === 'projectNote') {
-      const row = toProjectNoteRow(entity as ProjectNote, uid)
-      const { error } = await client.from('project_notes').upsert(row)
-      if (error) {
-        console.warn('Push projectNote failed:', error.message)
-        return false
-      }
-    } else {
-      const row = toNoteRow(entity as Note, uid)
-      const { error } = await client.from('notes').upsert(row)
-      if (error) {
-        console.warn('Push note failed:', error.message)
-        return false
-      }
+    const table = type === 'task' ? 'tasks' : type === 'projectNote' ? 'project_notes' : 'notes'
+    const row =
+      type === 'task'
+        ? toTaskRow(entity as Task, uid)
+        : type === 'projectNote'
+          ? toProjectNoteRow(entity as ProjectNote, uid)
+          : toNoteRow(entity as Note, uid)
+
+    const { error } = await client.from(table).upsert(row)
+    if (error) {
+      const reason = classifyPostgrestError(error)
+      console.warn(`Push ${type} failed (${reason}):`, error.message)
+      return { ok: false, reason }
     }
-    return true
+    return { ok: true }
   } catch (err) {
-    console.warn(`Push ${type} error:`, err)
-    return false
+    const reason = classifyException(err)
+    console.warn(`Push ${type} error (${reason}):`, err)
+    return { ok: false, reason }
   }
 }
 
+// Serialized fire-and-forget. Connectivity is checked INSIDE the push chain
+// (not before enqueuing) so mutations that happen while offline still land in
+// the chain; the chain step itself bails early if still offline, and the
+// entity is already marked dirty by the time the chain runs.
 export const pushEntity = (type: 'task' | 'projectNote' | 'note', entity: Task | ProjectNote | Note): void => {
   if (!getAuthStatus().isSignedIn) return
+  dirtyIds.add(entity.id)
 
-  // Check connectivity asynchronously — fire and forget
-  NetInfo.fetch().then((state) => {
-    if (!state.isConnected) return
-    pushChain = pushChain.then(async () => {
-      await doUpsert(type, entity)
-    })
+  pushChain = pushChain.then(async () => {
+    const net = await NetInfo.fetch()
+    if (!net.isConnected) return // stays dirty; next online transition or foreground will retry
+
+    const result = await doUpsert(type, entity)
+    if (result.ok) {
+      dirtyIds.delete(entity.id)
+      if (dirtyIds.size === 0) setSyncStatus('synced')
+    } else {
+      setSyncStatus('error', result.reason)
+      if (result.reason === 'auth') maybeCheckAuth()
+    }
   })
 }
 
@@ -131,7 +190,10 @@ export const pull = async (): Promise<void> => {
         projectNotesRes.error?.message,
         notesRes.error?.message,
       )
-      setSyncStatus('error')
+      const firstError = tasksRes.error ?? projectNotesRes.error ?? notesRes.error
+      const reason = firstError ? classifyPostgrestError(firstError) : 'unknown'
+      setSyncStatus('error', reason)
+      if (reason === 'auth') maybeCheckAuth()
       return
     }
 
@@ -139,7 +201,6 @@ export const pull = async (): Promise<void> => {
     const remoteProjectNotes = (projectNotesRes.data ?? []).map(fromProjectNoteRow)
     const remoteNotes = (notesRes.data ?? []).map(fromNoteRow)
 
-    // Group remote project notes by taskId
     const remoteNotesByTask = new Map<string, ProjectNote[]>()
     for (const pn of remoteProjectNotes) {
       const existing = remoteNotesByTask.get(pn.taskId) ?? []
@@ -148,7 +209,6 @@ export const pull = async (): Promise<void> => {
     }
 
     await enqueue(() => {
-      // --- Merge tasks ---
       // Project notes merge runs independently of the parent task merge so
       // that cross-device note-only edits survive even when the parent task
       // is stale.
@@ -163,15 +223,13 @@ export const pull = async (): Promise<void> => {
       })
 
       replaceTaskCache(mergedTasks)
-
-      // --- Merge notes ---
       replaceNoteCache(mergeByUpdatedAt(getAllNotesRaw(), remoteNotes))
     })
 
     setSyncStatus('synced')
   } catch (err) {
     console.warn('Pull error:', err)
-    setSyncStatus('error')
+    setSyncStatus('error', classifyException(err))
   }
 }
 
@@ -182,16 +240,20 @@ const syncDirtyAndPull = async (): Promise<void> => {
   if (!netState.isConnected || !getAuthStatus().isSignedIn) return
 
   setSyncStatus('syncing')
-  let hadFailures = false
+
+  let firstFailureReason: SyncReason | null = null
+  const track = (r: UpsertResult): void => {
+    if (!r.ok && firstFailureReason === null) firstFailureReason = r.reason
+  }
 
   try {
     const allTasks = getAllTasksRaw()
     for (const task of allTasks) {
       if (task.updatedAt > lastSyncedAt) {
-        if (!(await doUpsert('task', task))) hadFailures = true
+        track(await doUpsert('task', task))
         for (const pn of task.projectNotes ?? []) {
           if (pn.updatedAt > lastSyncedAt) {
-            if (!(await doUpsert('projectNote', pn))) hadFailures = true
+            track(await doUpsert('projectNote', pn))
           }
         }
       }
@@ -200,19 +262,23 @@ const syncDirtyAndPull = async (): Promise<void> => {
     const allNotes = getAllNotesRaw()
     for (const note of allNotes) {
       if (note.updatedAt > lastSyncedAt) {
-        if (!(await doUpsert('note', note))) hadFailures = true
+        track(await doUpsert('note', note))
       }
     }
 
     await pull()
 
-    if (!hadFailures) {
+    if (firstFailureReason === null) {
+      dirtyIds.clear()
       lastSyncedAt = Date.now()
       await saveMeta()
+    } else {
+      setSyncStatus('error', firstFailureReason)
+      if (firstFailureReason === 'auth') maybeCheckAuth()
     }
   } catch (err) {
     console.warn('Dirty sync error:', err)
-    setSyncStatus('error')
+    setSyncStatus('error', classifyException(err))
   }
 }
 
@@ -234,18 +300,16 @@ export const initSync = (deps: {
   replaceNoteCache = deps.replaceNoteCache
   enqueue = deps.enqueue
   pushChain = Promise.resolve()
+  dirtyIds.clear()
+  lastAuthCheckAt = 0
 
   loadMeta()
 
   // Sync on app foreground: push dirty entities then pull.
-  // Using syncDirtyAndPull instead of just pull ensures that transient
-  // online push failures get retried on every focus, not only on
-  // offline→online transitions.
   appStateSubscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
     if (nextState === 'active') syncDirtyAndPull()
   })
 
-  // Connectivity monitoring (equivalent to Electron's net.isOnline polling)
   unsubscribeNetInfo = NetInfo.addEventListener((state) => {
     const isOnline = !!state.isConnected
 
@@ -259,7 +323,6 @@ export const initSync = (deps: {
     }
   })
 
-  // Check initial connectivity
   NetInfo.fetch().then((state) => {
     wasOnline = !!state.isConnected
     if (!wasOnline) setSyncStatus('offline')

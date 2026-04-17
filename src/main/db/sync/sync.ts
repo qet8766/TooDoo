@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { Task, ProjectNote, Note } from '@shared/types'
-import type { SyncStatusPayload } from '@shared/ipc'
+import type { SyncReason, SyncStatusPayload } from '@shared/ipc'
 import { IPC } from '@shared/ipc'
 import {
   toTaskRow,
@@ -19,8 +19,10 @@ import { broadcast, broadcastTaskChange, broadcastNotesChange } from '../../broa
 import { app, net } from '../../electron'
 
 type SyncStatus = SyncStatusPayload['status']
+type UpsertResult = { ok: true } | { ok: false; reason: SyncReason }
 
 let syncStatus: SyncStatus = 'offline'
+let syncReason: SyncReason | undefined = undefined
 let lastSyncedAt = 0
 let metaFilePath = ''
 let wasOnline = false
@@ -34,11 +36,39 @@ const CONNECTIVITY_POLL_MS = 30_000
 // --- Status ---
 
 export const getSyncStatus = (): SyncStatus => syncStatus
+export const getSyncReason = (): SyncReason | undefined => syncReason
 
-const setSyncStatus = (status: SyncStatus): void => {
-  if (status === syncStatus) return
+const setSyncStatus = (status: SyncStatus, reason?: SyncReason): void => {
+  if (status === syncStatus && reason === syncReason) return
   syncStatus = status
-  broadcast(IPC.SYNC_STATUS_CHANGED, { status } satisfies SyncStatusPayload)
+  syncReason = reason
+  broadcast(IPC.SYNC_STATUS_CHANGED, { status, reason } satisfies SyncStatusPayload)
+}
+
+// --- Error classification ---
+
+/**
+ * Map a Supabase PostgrestError to a SyncReason. The PostgrestError shape
+ * exposes a `code` (5-char Postgres SQLSTATE or a PostgREST-specific prefix)
+ * and a `message`. Auth issues commonly surface via JWT-related messages or
+ * PostgREST's PGRST301 (JWT missing/invalid). Integrity violations use
+ * Postgres's `23xxx` class. Anything else is left as `'unknown'`.
+ */
+const classifyPostgrestError = (error: { code?: string; message?: string }): SyncReason => {
+  const msg = (error.message ?? '').toLowerCase()
+  const code = error.code ?? ''
+  if (code === 'PGRST301' || code === '42501') return 'auth'
+  if (msg.includes('jwt') || msg.includes('unauthor') || msg.includes('invalid api key')) return 'auth'
+  if (code.startsWith('23')) return 'validation'
+  return 'unknown'
+}
+
+const classifyException = (err: unknown): SyncReason => {
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase()
+    if (err.name === 'AbortError' || msg.includes('fetch') || msg.includes('network')) return 'network'
+  }
+  return 'unknown'
 }
 
 // --- Persistence ---
@@ -81,37 +111,33 @@ const maybeCheckAuth = (): void => {
 
 // --- Push ---
 
-const doUpsert = async (type: 'task' | 'projectNote' | 'note', entity: Task | ProjectNote | Note): Promise<boolean> => {
+const doUpsert = async (
+  type: 'task' | 'projectNote' | 'note',
+  entity: Task | ProjectNote | Note,
+): Promise<UpsertResult> => {
   const userId = getUserId()!
   const client = getClient()
 
   try {
-    if (type === 'task') {
-      const row = toTaskRow(entity as Task, userId)
-      const { error } = await client.from('tasks').upsert(row)
-      if (error) {
-        console.warn('Push task failed:', error.message)
-        return false
-      }
-    } else if (type === 'projectNote') {
-      const row = toProjectNoteRow(entity as ProjectNote, userId)
-      const { error } = await client.from('project_notes').upsert(row)
-      if (error) {
-        console.warn('Push projectNote failed:', error.message)
-        return false
-      }
-    } else {
-      const row = toNoteRow(entity as Note, userId)
-      const { error } = await client.from('notes').upsert(row)
-      if (error) {
-        console.warn('Push note failed:', error.message)
-        return false
-      }
+    const table = type === 'task' ? 'tasks' : type === 'projectNote' ? 'project_notes' : 'notes'
+    const row =
+      type === 'task'
+        ? toTaskRow(entity as Task, userId)
+        : type === 'projectNote'
+          ? toProjectNoteRow(entity as ProjectNote, userId)
+          : toNoteRow(entity as Note, userId)
+
+    const { error } = await client.from(table).upsert(row)
+    if (error) {
+      const reason = classifyPostgrestError(error)
+      console.warn(`Push ${type} failed (${reason}):`, error.message)
+      return { ok: false, reason }
     }
-    return true
+    return { ok: true }
   } catch (err) {
-    console.warn(`Push ${type} error:`, err)
-    return false
+    const reason = classifyException(err)
+    console.warn(`Push ${type} error (${reason}):`, err)
+    return { ok: false, reason }
   }
 }
 
@@ -120,14 +146,14 @@ const doUpsert = async (type: 'task' | 'projectNote' | 'note', entity: Task | Pr
 export const pushEntity = (type: 'task' | 'projectNote' | 'note', entity: Task | ProjectNote | Note): void => {
   if (!net.isOnline() || !getAuthStatus().isSignedIn) return
   pushChain = pushChain.then(async () => {
-    const ok = await doUpsert(type, entity)
-    if (ok) {
+    const result = await doUpsert(type, entity)
+    if (result.ok) {
       dirtyIds.delete(entity.id)
       if (dirtyIds.size === 0) setSyncStatus('synced')
     } else {
       dirtyIds.add(entity.id)
-      setSyncStatus('error')
-      maybeCheckAuth()
+      setSyncStatus('error', result.reason)
+      if (result.reason === 'auth') maybeCheckAuth()
     }
   })
 }
@@ -155,7 +181,10 @@ const pullInternal = async (): Promise<void> => {
         projectNotesRes.error?.message,
         notesRes.error?.message,
       )
-      setSyncStatus('error')
+      const firstError = tasksRes.error ?? projectNotesRes.error ?? notesRes.error
+      const reason = firstError ? classifyPostgrestError(firstError) : 'unknown'
+      setSyncStatus('error', reason)
+      if (reason === 'auth') maybeCheckAuth()
       return
     }
 
@@ -198,7 +227,7 @@ const pullInternal = async (): Promise<void> => {
     setSyncStatus('synced')
   } catch (err) {
     console.warn('Pull error:', err)
-    setSyncStatus('error')
+    setSyncStatus('error', classifyException(err))
   }
 }
 
@@ -224,16 +253,21 @@ export const syncDirtyAndPull = async (): Promise<void> => {
   try {
     setSyncStatus('syncing')
 
-    let hadFailures = false
+    // Track the first failure's reason; if anything fails we surface it via
+    // the error status instead of overwriting with 'synced' after pullInternal.
+    let firstFailureReason: SyncReason | null = null
+    const track = (r: UpsertResult): void => {
+      if (!r.ok && firstFailureReason === null) firstFailureReason = r.reason
+    }
 
     // Push dirty tasks and their project notes
     const allTasks = taskOps.getAllTasksRaw()
     for (const task of allTasks) {
       if (task.updatedAt > lastSyncedAt) {
-        if (!(await doUpsert('task', task))) hadFailures = true
+        track(await doUpsert('task', task))
         for (const pn of task.projectNotes ?? []) {
           if (pn.updatedAt > lastSyncedAt) {
-            if (!(await doUpsert('projectNote', pn))) hadFailures = true
+            track(await doUpsert('projectNote', pn))
           }
         }
       }
@@ -243,22 +277,25 @@ export const syncDirtyAndPull = async (): Promise<void> => {
     const allNotes = noteOps.getAllNotesRaw()
     for (const note of allNotes) {
       if (note.updatedAt > lastSyncedAt) {
-        if (!(await doUpsert('note', note))) hadFailures = true
+        track(await doUpsert('note', note))
       }
     }
 
-    // Pull remote changes
+    // Pull remote changes (this may end with setSyncStatus('synced'))
     await pullInternal()
 
     // Only advance watermark if every push succeeded
-    if (!hadFailures) {
+    if (firstFailureReason === null) {
       dirtyIds.clear()
       lastSyncedAt = Date.now()
       saveMeta()
+    } else {
+      setSyncStatus('error', firstFailureReason)
+      if (firstFailureReason === 'auth') maybeCheckAuth()
     }
   } catch (err) {
     console.warn('Dirty sync error:', err)
-    setSyncStatus('error')
+    setSyncStatus('error', classifyException(err))
   } finally {
     syncLock = false
   }
