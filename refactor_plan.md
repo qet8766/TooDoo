@@ -2,6 +2,20 @@
 
 Grounded against actual files: Overlay.tsx=812 lines, desktop sync.ts=364, mobile sync=327, 12 useStates in Overlay, only `tests/main/` exists (no renderer or mobile tests).
 
+## Progress
+
+| Phase | Status | Commit | Tests |
+|---|---|---|---|
+| 0 Safety net | ✅ done | `621298a` | 212 (207 desktop + 5 mobile) |
+| 1 Shared core | ✅ done | `f4d7694` | 231 (226 desktop + 5 mobile) + Playwright 13/13 |
+| 2 Sync robustness | ⬜ next | — | — |
+| 3 Overlay split | ⬜ | — | — |
+| 4 Mobile parity | ⬜ | — | — |
+| 5 Monorepo | ⬜ | — | — |
+| 6 Polish | ⬜ | — | — |
+
+Tag `refactor-baseline` at `621298a` for quick revert.
+
 ## Guiding principles
 
 - **Parity first, then extraction.** Fix mobile gaps so both apps behave identically, *then* promote shared code — extracting divergent behavior just codifies drift.
@@ -11,25 +25,28 @@ Grounded against actual files: Overlay.tsx=812 lines, desktop sync.ts=364, mobil
 
 ---
 
-## Phase 0 — Safety net (½ day)
+## Phase 0 — Safety net ✅
 
-- Confirm desktop Playwright suite green on `b6ebde8`.
-- Add Vitest + jsdom for renderer; write characterization tests on `Overlay.tsx` (add → broadcast, edit → save, minimize timer). Not for coverage — for regression detection.
-- Add Jest + RTL in `mobile/`; one smoke test on `TasksScreen`.
-- Tag `refactor-baseline`.
+- [x] Playwright 13/13 green on baseline (`b6ebde8`).
+- [x] Vitest gains jsdom env for `tests/renderer/**`, keeps node for `tests/main/**`.
+- [x] 5 characterization tests in `tests/renderer/Overlay.test.tsx` (fetch-on-mount, edit flow, minimize toggle, scorching disables minimize, onTasksChanged re-renders).
+- [x] Jest + RTL-native in `mobile/`; 5 tests on `useTaskSections` (tripwire for `@shared/*` import resolution — lighter target than full `TasksScreen` given its native-module deps).
+- [x] Tag `refactor-baseline`.
 
-## Phase 1 — Shared core hardening (2–3 days)
+## Phase 1 — Shared core hardening ✅
 
 Fix the actual bugs that a refactor would otherwise paper over.
 
-- **`src/shared/supabase-types.ts`**: move legacy-category (`project` → `timed`) migration out of `sanitizeTasks` and into `fromTaskRow` so desktop and mobile both pick it up at the mapper. One place, not two.
-- **`src/shared/validation.ts`**: change `validateTaskFields` to return `Result<null>` instead of `string | null`. Ripple through `tasks.ts`, mobile `taskStore.ts`.
-- **`src/shared/ipc.ts` + `src/preload/index.ts`**: replace `as Promise<T>` casts with a typed `invoke<TChannel>()` helper keyed to a `ChannelMap` type. Compile-time check on main↔renderer shapes.
-- **Merge combinator**: extract `mergeCacheByUpdatedAt<T>(local, remote, idFn, tsFn)` into `src/shared/merge.ts`. Replace the three copies in `sync.ts:179–323` and the mobile copy.
+- [x] **Merge combinator**: `src/shared/merge.ts` exports `mergeByUpdatedAt<T extends HasIdUpdatedAt>(local, remote)` — no id/ts function args needed once `HasIdUpdatedAt` became the type bound. Replaces 3 copies in desktop `sync.ts` + 1 in mobile `sync.ts`. 9 unit tests in `tests/main/merge.test.ts`.
+- [x] **Legacy-category migration**: extracted to `normalizeCategory()` in `src/shared/categories.ts`. Called from **both** `fromTaskRow` (remote pulls) and `sanitizeTask` (disk loads) — two boundaries, one helper. 10 tests in `tests/main/supabase-types.test.ts`.
+- [x] **Validators return `Result<null>`**: `validateTaskFields` / `validateProjectNoteFields` / `validateNoteFields`. `validateId` kept as `string | null` (internal helper). Desktop `tasks.ts` / `notes.ts` + mobile stores adapted.
+- [x] **Typed IPC bridge**: `ChannelMap` in `ipc.ts` maps each invoke channel to `{payload, response}`; preload's `invoke<K>()` helper derives return type. ~15 `as Promise<T>` casts removed. Send-style channels (QUICK_ADD_OPEN, WINDOW_RESIZE, etc.) intentionally excluded — no response to type.
 
-Exit: no new features, only signatures changed, all tests green.
+Exit met: no new features, all 226 desktop + 5 mobile tests green, tsc clean, Playwright 13/13.
 
-## Phase 2 — Sync robustness (3 days, desktop + mobile lockstep)
+## Phase 2 — Sync robustness ⬜ (next)
+
+Desktop + mobile lockstep.
 
 - **Typed error reasons**: `doUpsert` returns `{ ok: true } | { ok: false; reason: 'network' | 'auth' | 'validation' | 'unknown' }`. Propagate through `syncStatus` as a discriminated union.
 - **Auth health check on 401/403** in mobile `sync.ts:63–95` (port desktop's `maybeCheckAuth`).
