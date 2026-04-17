@@ -15,7 +15,7 @@ export const LIMITS = {
 // --- Core combinator ---
 
 /** Returns the first error message whose condition is true, or null if all pass. */
-export const validate = (rules: [boolean, string][]): string | null => rules.find(([fail]) => fail)?.[1] ?? null
+const validate = (rules: [boolean, string][]): string | null => rules.find(([fail]) => fail)?.[1] ?? null
 
 // --- Format validators ---
 

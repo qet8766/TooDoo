@@ -5,7 +5,7 @@ import type { Task, ProjectNote, Note, TaskCategory } from './types'
 
 // --- Row types (what the Supabase JS client returns) ---
 
-export type TaskRow = {
+type TaskRow = {
   id: string
   user_id: string
   title: string
@@ -20,7 +20,7 @@ export type TaskRow = {
   deleted_at: string | null // ISO 8601
 }
 
-export type ProjectNoteRow = {
+type ProjectNoteRow = {
   id: string
   task_id: string
   user_id: string
@@ -30,7 +30,7 @@ export type ProjectNoteRow = {
   deleted_at: string | null
 }
 
-export type NoteRow = {
+type NoteRow = {
   id: string
   user_id: string
   title: string

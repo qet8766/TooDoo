@@ -14,5 +14,4 @@ const config: WindowConfig = {
 }
 
 export const createTooDooOverlay = () => manager.create(() => createWindow(config))
-export const closeTooDooOverlay = () => manager.close()
 export const getTooDooOverlay = () => manager.get()

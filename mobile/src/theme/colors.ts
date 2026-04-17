@@ -19,12 +19,9 @@ export const colors = {
   // Status
   success: '#4ade80',
   error: '#f87171',
-  errorStrong: '#ef4444',
   warning: '#fbbf24',
 
   // Misc
   border: '#30363d',
-  transparent: 'transparent',
-  white: '#ffffff',
   black: '#000000',
 } as const

@@ -67,7 +67,7 @@ import { getAuthStatus, getClient, getUserId } from '@main/db/sync/supabase'
 import * as taskOps from '@main/db/tasks'
 import * as noteOps from '@main/db/notes'
 import { broadcast } from '@main/broadcast'
-import type { Task, Note, ProjectNote } from '@shared/types'
+import type { Task, Note } from '@shared/types'
 
 const mockEnqueue = vi.fn(<T>(fn: () => T): Promise<T> => Promise.resolve(fn()))
 
@@ -89,6 +89,46 @@ beforeEach(() => {
   vi.mocked(noteOps.getAllNotesRaw).mockReturnValue([])
   mockEnqueue.mockImplementation(<T>(fn: () => T): Promise<T> => Promise.resolve(fn()))
   initSync('/tmp/test', mockEnqueue)
+})
+
+// --- Row factory helpers ---
+
+const makeTaskRow = (overrides: Record<string, unknown> = {}) => ({
+  id: 'task-1',
+  user_id: 'user-123',
+  title: 'Remote Title',
+  description: null,
+  category: 'hot',
+  is_done: false,
+  sort_order: 'a0',
+  scheduled_date: null,
+  scheduled_time: null,
+  created_at: new Date(1000).toISOString(),
+  updated_at: new Date(3000).toISOString(),
+  deleted_at: null,
+  ...overrides,
+})
+
+const makeProjectNoteRow = (overrides: Record<string, unknown> = {}) => ({
+  id: 'pn-1',
+  task_id: 'task-1',
+  user_id: 'user-123',
+  content: 'Remote note content',
+  created_at: new Date(1000).toISOString(),
+  updated_at: new Date(3000).toISOString(),
+  deleted_at: null,
+  ...overrides,
+})
+
+const makeNoteRow = (overrides: Record<string, unknown> = {}) => ({
+  id: 'note-1',
+  user_id: 'user-123',
+  title: 'Remote Title',
+  content: 'Remote content',
+  created_at: new Date(1000).toISOString(),
+  updated_at: new Date(3000).toISOString(),
+  deleted_at: null,
+  ...overrides,
 })
 
 describe('pushEntity', () => {
@@ -147,32 +187,6 @@ describe('pushEntity', () => {
 })
 
 describe('pull', () => {
-  const makeTaskRow = (overrides: Record<string, unknown> = {}) => ({
-    id: 'task-1',
-    user_id: 'user-123',
-    title: 'Remote Title',
-    description: null,
-    category: 'hot',
-    is_done: false,
-    sort_order: 'a0',
-    scheduled_date: null,
-    scheduled_time: null,
-    created_at: new Date(1000).toISOString(),
-    updated_at: new Date(3000).toISOString(),
-    deleted_at: null,
-    ...overrides,
-  })
-
-  const makeNoteRow = (overrides: Record<string, unknown> = {}) => ({
-    id: 'note-1',
-    user_id: 'user-123',
-    title: 'Remote Title',
-    content: 'Remote content',
-    created_at: new Date(1000).toISOString(),
-    updated_at: new Date(3000).toISOString(),
-    deleted_at: null,
-    ...overrides,
-  })
 
   it('should merge remote-newer tasks into local', async () => {
     const localTask: Task = {
@@ -407,46 +421,6 @@ describe('getSyncStatus', () => {
     const status = getSyncStatus()
     expect(['synced', 'syncing', 'offline', 'error', 'auth-expired']).toContain(status)
   })
-})
-
-// --- Helpers for new tests ---
-
-const makeTaskRow = (overrides: Record<string, unknown> = {}) => ({
-  id: 'task-1',
-  user_id: 'user-123',
-  title: 'Remote Title',
-  description: null,
-  category: 'hot',
-  is_done: false,
-  sort_order: 'a0',
-  scheduled_date: null,
-  scheduled_time: null,
-  created_at: new Date(1000).toISOString(),
-  updated_at: new Date(3000).toISOString(),
-  deleted_at: null,
-  ...overrides,
-})
-
-const makeProjectNoteRow = (overrides: Record<string, unknown> = {}) => ({
-  id: 'pn-1',
-  task_id: 'task-1',
-  user_id: 'user-123',
-  content: 'Remote note content',
-  created_at: new Date(1000).toISOString(),
-  updated_at: new Date(3000).toISOString(),
-  deleted_at: null,
-  ...overrides,
-})
-
-const makeNoteRow = (overrides: Record<string, unknown> = {}) => ({
-  id: 'note-1',
-  user_id: 'user-123',
-  title: 'Remote Note',
-  content: 'Remote content',
-  created_at: new Date(1000).toISOString(),
-  updated_at: new Date(3000).toISOString(),
-  deleted_at: null,
-  ...overrides,
 })
 
 const threeTableMock = (tasks: unknown[] = [], projectNotes: unknown[] = [], notes: unknown[] = []) => {

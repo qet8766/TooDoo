@@ -12,7 +12,7 @@ export interface Holiday {
 }
 
 // 2026 Korean Public Holidays
-export const KOREAN_HOLIDAYS_2026: Holiday[] = [
+const KOREAN_HOLIDAYS_2026: Holiday[] = [
   // January
   { date: '2026-01-01', name: '신정', nameEn: "New Year's Day", isSubstitute: false },
 
@@ -53,7 +53,7 @@ export const KOREAN_HOLIDAYS_2026: Holiday[] = [
 ]
 
 // 2027 Korean Public Holidays
-export const KOREAN_HOLIDAYS_2027: Holiday[] = [
+const KOREAN_HOLIDAYS_2027: Holiday[] = [
   // January
   { date: '2027-01-01', name: '신정', nameEn: "New Year's Day", isSubstitute: false },
 
@@ -93,31 +93,16 @@ export const KOREAN_HOLIDAYS_2027: Holiday[] = [
 ]
 
 // Combined holidays for both years
-export const ALL_HOLIDAYS: Holiday[] = [...KOREAN_HOLIDAYS_2026, ...KOREAN_HOLIDAYS_2027]
+const ALL_HOLIDAYS: Holiday[] = [...KOREAN_HOLIDAYS_2026, ...KOREAN_HOLIDAYS_2027]
 
 // Holiday lookup map for O(1) access
 const holidayMap = new Map<string, Holiday>(ALL_HOLIDAYS.map((h) => [h.date, h]))
-
-/**
- * Get holidays for a specific month
- */
-export const getHolidaysByMonth = (year: number, month: number): Holiday[] => {
-  const prefix = `${year}-${String(month).padStart(2, '0')}`
-  return ALL_HOLIDAYS.filter((h) => h.date.startsWith(prefix))
-}
 
 /**
  * Check if a date is a holiday and return holiday info
  */
 export const getHoliday = (dateStr: string): Holiday | undefined => {
   return holidayMap.get(dateStr)
-}
-
-/**
- * Check if a date is a holiday
- */
-export const isHoliday = (dateStr: string): boolean => {
-  return holidayMap.has(dateStr)
 }
 
 /**

@@ -5,7 +5,7 @@ import type { Task, TaskCategory, ProjectNote } from '@shared/types'
 import { validateTaskFields, validateProjectNoteFields, sanitizeTasks } from '@shared/validation'
 import { readJson, writeJson } from '../data/persistence'
 import { createQueue } from '../data/queue'
-import { pushEntity, initSync } from '../data/sync'
+import { pushEntity } from '../data/sync'
 
 const TASKS_KEY = '@toodoo/tasks'
 
@@ -27,7 +27,6 @@ const firstSortKey = (tasks: Task[], category: TaskCategory): string | null => {
 
 type TaskState = {
   tasks: Task[]
-  isLoaded: boolean
 }
 
 type TaskActions = {
@@ -66,12 +65,11 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => {
 
   return {
     tasks: [],
-    isLoaded: false,
 
     init: async () => {
       const raw = await readJson(TASKS_KEY)
       const tasks = sanitizeTasks(raw)
-      set({ tasks, isLoaded: true })
+      set({ tasks })
     },
 
     addTask: (p) =>

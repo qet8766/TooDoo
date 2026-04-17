@@ -1,12 +1,17 @@
 import React from 'react'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
 import { colors } from '../theme/colors'
 import { TasksScreen } from '../screens/tasks/TasksScreen'
-import { NotesScreen } from '../screens/notes/NotesScreen'
+import { CalendarStack } from './CalendarStack'
+import { NotesStack } from './NotesStack'
+import { SyncDot } from '../components/common/SyncDot'
+import { FontSizeControls } from '../components/common/FontSizeControls'
 
 export type MainTabParamList = {
   Tasks: undefined
-  Notes: undefined
+  Calendar: undefined
+  NotesTab: undefined
 }
 
 const Tab = createBottomTabNavigator<MainTabParamList>()
@@ -25,12 +30,35 @@ export function MainTabs() {
       <Tab.Screen
         name="Tasks"
         component={TasksScreen}
-        options={{ title: 'TooDoo' }}
+        options={{
+          title: 'TooDoo',
+          headerLeft: () => <SyncDot />,
+          headerRight: () => <FontSizeControls />,
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="format-list-bulleted" size={size} color={color} />
+          ),
+        }}
       />
       <Tab.Screen
-        name="Notes"
-        component={NotesScreen}
-        options={{ title: 'Notetank' }}
+        name="Calendar"
+        component={CalendarStack}
+        options={{
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="calendar-month" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="NotesTab"
+        component={NotesStack}
+        options={{
+          title: 'Notetank',
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="note-text-outline" size={size} color={color} />
+          ),
+        }}
       />
     </Tab.Navigator>
   )

@@ -12,7 +12,6 @@ const queue = createQueue()
 
 type NoteState = {
   notes: Note[]
-  isLoaded: boolean
 }
 
 type NoteActions = {
@@ -32,12 +31,11 @@ export const useNoteStore = create<NoteState & NoteActions>((set, get) => {
 
   return {
     notes: [],
-    isLoaded: false,
 
     init: async () => {
       const raw = await readJson(NOTES_KEY)
       const notes = sanitizeNotes(raw)
-      set({ notes, isLoaded: true })
+      set({ notes })
     },
 
     addNote: (p) =>

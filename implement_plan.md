@@ -251,4 +251,4 @@ Port TooDoo to React Native Android and add Supabase as a shared backend for cro
 - [x] **Gate 1** — Foundation (Supabase + shared types + soft delete + fractional sort)
 - [x] **Gate 2** — Electron Sync (auth, push-on-mutate, pull-on-focus, server timestamps)
 - [~] **Gate 3** — Mobile Foundation (scaffold + data layer) — code complete, needs Android SDK for device testing
-- [ ] **Gate 4** — Mobile Screens (tasks + calendar + notes + polish)
+- [~] **Gate 4** — Mobile Screens (tasks + calendar + notes + polish) — code complete, needs Android SDK for device testing
