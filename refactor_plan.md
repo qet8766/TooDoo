@@ -8,8 +8,8 @@ Grounded against actual files: Overlay.tsx=812 lines, desktop sync.ts=364, mobil
 |---|---|---|---|
 | 0 Safety net | ✅ done | `621298a` | 212 (207 desktop + 5 mobile) |
 | 1 Shared core | ✅ done | `f4d7694` | 231 (226 desktop + 5 mobile) + Playwright 13/13 |
-| 2 Sync robustness | ⬜ next | — | — |
-| 3 Overlay split | ⬜ | — | — |
+| 2 Sync robustness | ✅ done | `92993b5` | 251 (232 desktop + 19 mobile) + Playwright 13/13 |
+| 3 Overlay split | ⬜ next | — | — |
 | 4 Mobile parity | ⬜ | — | — |
 | 5 Monorepo | ⬜ | — | — |
 | 6 Polish | ⬜ | — | — |
@@ -44,17 +44,19 @@ Fix the actual bugs that a refactor would otherwise paper over.
 
 Exit met: no new features, all 226 desktop + 5 mobile tests green, tsc clean, Playwright 13/13.
 
-## Phase 2 — Sync robustness ⬜ (next)
+## Phase 2 — Sync robustness ✅
 
-Desktop + mobile lockstep.
+Desktop and mobile now share the same error classification pipeline.
 
-- **Typed error reasons**: `doUpsert` returns `{ ok: true } | { ok: false; reason: 'network' | 'auth' | 'validation' | 'unknown' }`. Propagate through `syncStatus` as a discriminated union.
-- **Auth health check on 401/403** in mobile `sync.ts:63–95` (port desktop's `maybeCheckAuth`).
-- **Dirty ID tracking in mobile**: mirror desktop's `dirtyIds` + `getDirtyCount()`. Add mobile SyncDot.
-- **Connectivity race (mobile sync.ts:101)**: check online state *inside* the push chain, not before enqueuing.
-- **Watermark**: leave all-or-nothing for now; TODO with per-entity retry design, don't build yet.
+- [x] **Typed error reasons**: `doUpsert` returns `UpsertResult = {ok:true} | {ok:false; reason}`. Classifier uses PostgREST code (PGRST301), Postgres SQLSTATE (42501 → auth, 23xxx → validation) and message heuristics (JWT/unauthorized/fetch).
+- [x] **`SyncReason` + extended `SyncStatusPayload`** in `shared/ipc.ts`; `getSyncReason()` exposed alongside `getSyncStatus()`; main-process `SYNC_STATUS` handler propagates it.
+- [x] **Auth health check on mobile**: `checkAuthHealth` + `maybeCheckAuth` ported from desktop; calls `markAuthExpired` (new export in mobile `supabase.ts`) to flip auth state without going through `signOut`.
+- [x] **Dirty ID tracking on mobile**: `dirtyIds` Set + `getDirtyCount()` export. `useSyncStatus` hook returns `{ status, reason, dirtyCount }`. `SyncDot` shows a count badge when pushes are pending.
+- [x] **Connectivity race fix (mobile)**: `NetInfo.fetch()` moved inside the push chain; mutations made while online still mark dirty if the connection drops before the chain runs, and get retried on the next online/foreground transition.
+- [x] **Targeted auth check**: only auth-classified failures call `maybeCheckAuth()` now. Generic failures no longer waste a `getUser()` round-trip on every push.
+- [ ] **Watermark**: all-or-nothing left as-is; per-entity retry deferred until actual waste is observed.
 
-Exit: `sync-engine.test.ts` extended for error reasons; new mobile `sync.test.ts`.
+Exit met: 6 new reason tests in `sync-engine.test.ts` (41 total in that file); new mobile `sync.test.ts` with 14 tests covering classification, dirty tracking, connectivity race, auth cooldown, pull merging, and listener propagation. Playwright 13/13.
 
 ## Phase 3 — Overlay decomposition (2–3 days)
 
