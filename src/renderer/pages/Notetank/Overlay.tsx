@@ -13,7 +13,7 @@ const NotetankOverlay = () => {
   const [syncStatus, setSyncStatus] = useState<string>('offline')
 
   useEffect(() => {
-    window.toodoo.sync.getStatus().then((s) => setSyncStatus(s.status))
+    void window.toodoo.sync.getStatus().then((s) => setSyncStatus(s.status))
     const unsub = window.toodoo.onSyncStatusChanged((s) => setSyncStatus(s.status))
     return unsub
   }, [])
@@ -31,8 +31,8 @@ const NotetankOverlay = () => {
   }, [])
 
   useEffect(() => {
-    const unsubscribe = window.toodoo.onNotesChanged(fetchNotes)
-    fetchNotes()
+    const unsubscribe = window.toodoo.onNotesChanged(() => void fetchNotes())
+    void fetchNotes()
     return unsubscribe
   }, [fetchNotes])
 
@@ -62,7 +62,7 @@ const NotetankOverlay = () => {
 
   const handleNoteDeleteClick = (noteId: string) => {
     if (armedForDelete.has(noteId)) {
-      handleDeleteNote(noteId)
+      void handleDeleteNote(noteId)
     } else {
       armForDelete(noteId)
     }

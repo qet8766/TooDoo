@@ -42,9 +42,9 @@ export const loadRoute = (win: BrowserWindowType, hashPath: string) => {
   if (!rendererTarget) throw new Error('Renderer target not configured')
   const route = hashPath.startsWith('/') ? hashPath : `/${hashPath}`
   if (rendererTarget.devServerUrl) {
-    win.loadURL(`${rendererTarget.devServerUrl}${route === '/' ? '#/' : `#${route}`}`)
+    void win.loadURL(`${rendererTarget.devServerUrl}${route === '/' ? '#/' : `#${route}`}`)
   } else {
-    win.loadFile(rendererTarget.indexHtml, { hash: route })
+    void win.loadFile(rendererTarget.indexHtml, { hash: route })
   }
 }
 

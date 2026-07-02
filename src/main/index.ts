@@ -93,7 +93,7 @@ const bootstrap = async () => {
   configureRendererTarget({ devServerUrl, indexHtml })
 
   // Initialize database (loads local JSON files)
-  await initDatabase()
+  initDatabase()
 
   // Initialize Supabase client and attempt session restore
   const userDataPath = app.getPath('userData')
@@ -105,7 +105,7 @@ const bootstrap = async () => {
 
   // If session was restored, do an initial sync
   if (sessionRestored) {
-    syncDirtyAndPull()
+    void syncDirtyAndPull()
   }
 
   // Now show the main overlay and register shortcuts
@@ -113,7 +113,12 @@ const bootstrap = async () => {
   manageShortcuts('register')
 }
 
-app.whenReady().then(bootstrap)
+app
+  .whenReady()
+  .then(bootstrap)
+  .catch((err: unknown) => {
+    console.error('Bootstrap failed:', err)
+  })
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
@@ -144,7 +149,11 @@ handle(IPC.TASKS_LIST, getTasks)
 handle(IPC.TASKS_ADD, addTask, broadcastTaskChange)
 handle(IPC.TASKS_UPDATE, updateTask, broadcastTaskChange)
 handle(IPC.TASKS_DELETE, deleteTask, broadcastTaskChange)
-handle(IPC.TASKS_REORDER, (p: { taskId: string; targetIndex: number }) => reorderTask(p.taskId, p.targetIndex), broadcastTaskChange)
+handle(
+  IPC.TASKS_REORDER,
+  (p: { taskId: string; targetIndex: number }) => reorderTask(p.taskId, p.targetIndex),
+  broadcastTaskChange,
+)
 handle(IPC.TASKS_NOTE_ADD, addProjectNote, broadcastTaskChange)
 handle(IPC.TASKS_NOTE_UPDATE, updateProjectNote, broadcastTaskChange)
 handle(IPC.TASKS_NOTE_DELETE, deleteProjectNote, broadcastTaskChange)

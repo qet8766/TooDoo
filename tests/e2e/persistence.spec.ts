@@ -21,9 +21,7 @@ test('tasks survive a restart with the same userData directory', async () => {
 
     // Confirm data was written to disk before closing.
     const tasksPath = path.join(userDataDir, 'data', 'tasks.json')
-    await expect
-      .poll(() => fs.existsSync(tasksPath), { timeout: 3_000 })
-      .toBe(true)
+    await expect.poll(() => fs.existsSync(tasksPath), { timeout: 3_000 }).toBe(true)
 
     await app1.close()
 

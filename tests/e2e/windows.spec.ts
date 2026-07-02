@@ -8,18 +8,10 @@ test('calendar toggle grows and shrinks the overlay window', async ({ overlay })
   const initialWidth = await overlay.evaluate(() => window.outerWidth)
 
   await overlay.locator('[data-testid="btn-calendar"]').click()
-  await overlay.waitForFunction(
-    (start) => window.outerWidth >= start + 200,
-    initialWidth,
-    { timeout: 3_000 },
-  )
+  await overlay.waitForFunction((start) => window.outerWidth >= start + 200, initialWidth, { timeout: 3_000 })
 
   await overlay.locator('[data-testid="btn-calendar"]').click()
-  await overlay.waitForFunction(
-    (start) => window.outerWidth <= start + 10,
-    initialWidth,
-    { timeout: 3_000 },
-  )
+  await overlay.waitForFunction((start) => window.outerWidth <= start + 10, initialWidth, { timeout: 3_000 })
 })
 
 test('hash navigation swaps between overlay and notetank', async ({ overlay }) => {

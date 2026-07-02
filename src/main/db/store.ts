@@ -10,8 +10,8 @@ export const ensureDir = (dirPath: string): void => {
   fs.mkdirSync(dirPath, { recursive: true })
 }
 
-/** Read and parse a JSON file. Returns parsed data or a StoreError. */
-export const readJsonFile = (filePath: string): unknown | StoreError => {
+/** Read and parse a JSON file. Returns parsed data, or a StoreError on I/O failure. */
+export const readJsonFile = (filePath: string): unknown => {
   try {
     if (!fs.existsSync(filePath)) return null
     const raw = fs.readFileSync(filePath, 'utf-8')

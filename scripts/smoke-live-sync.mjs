@@ -168,11 +168,7 @@ const run = async () => {
       .eq('id', projectNoteId)
       .select()
       .single()
-    record(
-      'project_notes: tombstone persists',
-      !pnDelErr && pnTomb?.deleted_at !== null,
-      pnDelErr?.message ?? '',
-    )
+    record('project_notes: tombstone persists', !pnDelErr && pnTomb?.deleted_at !== null, pnDelErr?.message ?? '')
   }
 
   // --- Note (Notetank) insert ---
@@ -188,11 +184,7 @@ const run = async () => {
   record('notes: insert', !noteErr, noteErr?.message ?? '')
 
   // --- Select round-trip (Gate 2.4: pull semantics — read back all our rows) ---
-  const { data: pulled, error: pullErr } = await client
-    .from('tasks')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('id', taskId)
+  const { data: pulled, error: pullErr } = await client.from('tasks').select('*').eq('user_id', userId).eq('id', taskId)
   if (pullErr) {
     record('tasks: select roundtrip', false, pullErr.message)
   } else {

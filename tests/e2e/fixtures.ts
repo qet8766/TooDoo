@@ -1,10 +1,4 @@
-/* eslint-disable react-hooks/rules-of-hooks */
-import {
-  test as base,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test'
+import { test as base, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -110,11 +104,7 @@ export const openQuickAdd = async (
   return quickAdd
 }
 
-export const openNoteEditor = async (
-  app: ElectronApplication,
-  overlay: Page,
-  noteId?: string,
-): Promise<Page> => {
+export const openNoteEditor = async (app: ElectronApplication, overlay: Page, noteId?: string): Promise<Page> => {
   const pagePromise = app.waitForEvent('window')
   await overlay.evaluate((id) => window.toodoo.noteEditor.open(id), noteId)
   const editor = await pagePromise

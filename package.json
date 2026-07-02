@@ -13,18 +13,17 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "typecheck": "tsc -b",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
     "test:e2e": "npm run build && playwright test",
-    "test:all": "npm run test",
-    "install:clean": "npm ci",
-    "audit:security": "npm audit --audit-level=moderate",
-    "cache:clean": "npm cache clean --force",
-    "deps:check": "npm outdated",
-    "deps:update": "npm update"
+    "audit:security": "npm audit --audit-level=moderate"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   },
   "build": {
     "appId": "com.toodoo.app",
@@ -91,8 +90,8 @@
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
-    "@vitest/coverage-v8": "^2.1.0",
-    "@vitest/ui": "^2.1.0",
+    "@vitest/coverage-v8": "^4.1.9",
+    "@vitest/ui": "^4.1.9",
     "electron": "^39.2.7",
     "electron-builder": "^26.0.12",
     "eslint": "^9.39.1",
@@ -108,6 +107,6 @@
     "vite": "^7.2.4",
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6",
-    "vitest": "^2.1.0"
+    "vitest": "^4.1.9"
   }
 }

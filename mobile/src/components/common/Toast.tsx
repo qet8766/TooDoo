@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Animated, StyleSheet, Text } from 'react-native'
 import { useToastStore } from '../../stores/toastStore'
 import { colors } from '../../theme/colors'
@@ -6,7 +6,8 @@ import { spacing } from '../../theme/spacing'
 
 export function ToastHost() {
   const message = useToastStore((s) => s.message)
-  const opacity = useRef(new Animated.Value(0)).current
+  // Lazy useState keeps one stable Animated.Value without reading a ref in render
+  const [opacity] = useState(() => new Animated.Value(0))
 
   useEffect(() => {
     Animated.timing(opacity, {

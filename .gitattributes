@@ -1,0 +1,16 @@
+# Normalize all text files to LF in the repo and on checkout.
+# Prettier (endOfLine: lf) and the toolchain assume LF; editors on Windows handle LF fine.
+* text=auto eol=lf
+
+# Windows batch scripts must keep CRLF to run reliably under cmd.exe
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets — never convert
+*.png binary
+*.ico binary
+*.icns binary
+*.jar binary
+*.keystore binary
+*.ttf binary
+*.otf binary

@@ -38,7 +38,7 @@ const NoteEditor = () => {
         setIsLoading(false)
       }
     }
-    loadNote()
+    void loadNote()
   }, [noteId])
 
   const handleSubmit = async (e: FormEvent) => {

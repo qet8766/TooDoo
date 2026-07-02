@@ -9,11 +9,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Hoist mock fns so they're available inside vi.mock factories
 const { mockIsOnline, mockUpsert, mockFrom, mockGetUser } = vi.hoisted(() => {
   const mockIsOnline = vi.fn(() => true)
-  const mockUpsert = vi.fn().mockResolvedValue({ error: null })
-  const mockFrom = vi.fn(() => ({
-    upsert: mockUpsert,
-    select: vi.fn(() => Promise.resolve({ data: [], error: null })),
-  }))
+  const mockUpsert = vi.fn(
+    (_row: Record<string, unknown>): Promise<{ error: { code?: string; message: string } | null }> =>
+      Promise.resolve({ error: null }),
+  )
+  // Loose table shape so tests can vary select() results per table
+  type MockTable = {
+    upsert: typeof mockUpsert
+    select: () => Promise<{ data: unknown[] | null; error: { message: string } | null }>
+  }
+  const mockFrom = vi.fn(
+    (_table: string): MockTable => ({
+      upsert: mockUpsert,
+      select: vi.fn(() => Promise.resolve({ data: [], error: null })),
+    }),
+  )
   const mockGetUser = vi.fn().mockResolvedValue({ data: { user: { id: 'user-123' } }, error: null })
   return { mockIsOnline, mockUpsert, mockFrom, mockGetUser }
 })
@@ -79,6 +89,8 @@ import { broadcast } from '@main/broadcast'
 import type { Task, Note } from '@shared/types'
 
 const mockEnqueue = vi.fn(<T>(fn: () => T): Promise<T> => Promise.resolve(fn()))
+// vi.fn() erases the generic signature; initSync's enqueue parameter needs it back
+const enqueue = mockEnqueue as unknown as Parameters<typeof initSync>[1]
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -91,13 +103,13 @@ beforeEach(() => {
   }))
   mockGetUser.mockResolvedValue({ data: { user: { id: 'user-123' } }, error: null })
   vi.mocked(getAuthStatus).mockReturnValue({ isSignedIn: true, userId: 'user-123' })
-  vi.mocked(getClient).mockReturnValue({ from: mockFrom, auth: { getUser: mockGetUser } } as ReturnType<
+  vi.mocked(getClient).mockReturnValue({ from: mockFrom, auth: { getUser: mockGetUser } } as unknown as ReturnType<
     typeof getClient
   >)
   vi.mocked(taskOps.getAllTasksRaw).mockReturnValue([])
   vi.mocked(noteOps.getAllNotesRaw).mockReturnValue([])
   mockEnqueue.mockImplementation(<T>(fn: () => T): Promise<T> => Promise.resolve(fn()))
-  initSync('/tmp/test', mockEnqueue)
+  initSync('/tmp/test', enqueue)
 })
 
 // --- Row factory helpers ---
@@ -196,7 +208,6 @@ describe('pushEntity', () => {
 })
 
 describe('pull', () => {
-
   it('should merge remote-newer tasks into local', async () => {
     const localTask: Task = {
       id: 'task-1',
@@ -741,7 +752,8 @@ describe('syncDirtyAndPull — project notes', () => {
       .filter((_call, i) => {
         // The mockFrom returns an object — check if upsert was actually called on it
         // For dirty sync, upsert is called; for pull, select is called
-        return mockFrom.mock.results[i]?.value?.upsert === mockUpsert
+        const result = mockFrom.mock.results[i]
+        return result?.type === 'return' && result.value.upsert === mockUpsert
       })
       .map((c) => c[0])
 
@@ -951,7 +963,7 @@ describe('pollConnectivity', () => {
   it('should trigger sync on offline to online transition', async () => {
     // Start offline
     mockIsOnline.mockReturnValue(false)
-    initSync('/tmp/test', mockEnqueue)
+    initSync('/tmp/test', enqueue)
 
     // Go online
     mockIsOnline.mockReturnValue(true)
@@ -970,7 +982,7 @@ describe('pollConnectivity', () => {
   it('should set status to offline on online to offline transition', () => {
     // Start online
     mockIsOnline.mockReturnValue(true)
-    initSync('/tmp/test', mockEnqueue)
+    initSync('/tmp/test', enqueue)
 
     // Go offline
     mockIsOnline.mockReturnValue(false)
@@ -981,7 +993,7 @@ describe('pollConnectivity', () => {
 
   it('should do nothing when staying online', () => {
     mockIsOnline.mockReturnValue(true)
-    initSync('/tmp/test', mockEnqueue)
+    initSync('/tmp/test', enqueue)
 
     vi.advanceTimersByTime(30_000)
 
@@ -992,7 +1004,7 @@ describe('pollConnectivity', () => {
   it('should not sync when going online but not signed in', () => {
     mockIsOnline.mockReturnValue(false)
     vi.mocked(getAuthStatus).mockReturnValue({ isSignedIn: false, userId: null })
-    initSync('/tmp/test', mockEnqueue)
+    initSync('/tmp/test', enqueue)
 
     mockIsOnline.mockReturnValue(true)
     vi.advanceTimersByTime(30_000)

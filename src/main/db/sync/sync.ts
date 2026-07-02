@@ -105,7 +105,7 @@ const checkAuthHealth = async (): Promise<void> => {
 const maybeCheckAuth = (): void => {
   if (Date.now() - lastAuthCheckAt > AUTH_CHECK_COOLDOWN_MS) {
     lastAuthCheckAt = Date.now()
-    checkAuthHealth()
+    void checkAuthHealth()
   }
 }
 
@@ -307,7 +307,7 @@ const pollConnectivity = (): void => {
   const isOnline = net.isOnline()
 
   if (isOnline && !wasOnline && getAuthStatus().isSignedIn) {
-    syncDirtyAndPull()
+    void syncDirtyAndPull()
   }
 
   if (isOnline !== wasOnline) {
@@ -336,7 +336,7 @@ export const initSync = (userDataPath: string, enqueueFn: <T>(fn: () => T) => Pr
   if (!wasOnline) setSyncStatus('offline')
 
   app.on('browser-window-focus', () => {
-    pull()
+    void pull()
   })
 
   setInterval(pollConnectivity, CONNECTIVITY_POLL_MS)

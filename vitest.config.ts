@@ -7,12 +7,26 @@ export default defineConfig({
   test: {
     globals: true,
 
-    // Default env is node (main process tests). Renderer tests under
-    // tests/renderer/** override to jsdom via environmentMatchGlobs.
-    environment: 'node',
-    environmentMatchGlobs: [['tests/renderer/**', 'jsdom']],
-
-    include: ['tests/main/**/*.test.ts', 'tests/renderer/**/*.test.{ts,tsx}'],
+    // Main-process tests run in node; renderer tests run in jsdom.
+    // Each project inherits the shared options below via `extends: true`.
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'main',
+          environment: 'node',
+          include: ['tests/main/**/*.test.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'renderer',
+          environment: 'jsdom',
+          include: ['tests/renderer/**/*.test.{ts,tsx}'],
+        },
+      },
+    ],
 
     exclude: ['node_modules', 'dist', 'dist-electron', 'release'],
 

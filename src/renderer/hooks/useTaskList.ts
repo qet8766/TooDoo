@@ -27,8 +27,8 @@ export function useTaskList() {
   }, [])
 
   useEffect(() => {
-    const unsubscribe = window.toodoo.onTasksChanged(fetchTasks)
-    fetchTasks()
+    const unsubscribe = window.toodoo.onTasksChanged(() => void fetchTasks())
+    void fetchTasks()
     return unsubscribe
   }, [fetchTasks])
 

@@ -52,13 +52,13 @@ const TooDooOverlay = () => {
 
   // Sync + auth status subscriptions.
   useEffect(() => {
-    window.toodoo.sync.getStatus().then((s) => setSyncStatus(s.status))
+    void window.toodoo.sync.getStatus().then((s) => setSyncStatus(s.status))
     const unsub = window.toodoo.onSyncStatusChanged((s) => setSyncStatus(s.status))
     return unsub
   }, [])
 
   useEffect(() => {
-    window.toodoo.auth.getStatus().then((status) => {
+    void window.toodoo.auth.getStatus().then((status) => {
       if (!status.isSignedIn) setShowSignIn(true)
     })
     const unsub = window.toodoo.onAuthStatusChanged((status) => {
@@ -148,7 +148,7 @@ const TooDooOverlay = () => {
         console.error('Failed to update task category:', result.error)
       }
     },
-    [draggingTaskId],
+    [draggingTaskId, setTasks],
   )
 
   const allowDrop = useCallback((e: DragEvent<HTMLElement>) => {
@@ -168,7 +168,7 @@ const TooDooOverlay = () => {
 
   const handleTaskDeleteClick = (taskId: string) => {
     if (armedForDelete.has(taskId)) {
-      removeTask(taskId)
+      void removeTask(taskId)
     } else {
       armForDelete(taskId)
     }
@@ -229,7 +229,7 @@ const TooDooOverlay = () => {
 
   const handleNoteDeleteClick = (taskId: string, noteId: string) => {
     if (armedForDelete.has(noteId)) {
-      deleteNote(taskId, noteId)
+      void deleteNote(taskId, noteId)
     } else {
       armForDelete(noteId)
     }
@@ -500,7 +500,7 @@ const TooDooOverlay = () => {
                                           value={editingNote.content}
                                           onChange={(e) => setEditingNote({ ...editingNote, content: e.target.value })}
                                           onKeyDown={(e) => {
-                                            if (e.key === 'Enter') saveEditNote(task.id)
+                                            if (e.key === 'Enter') void saveEditNote(task.id)
                                             if (e.key === 'Escape') setEditingNote(null)
                                           }}
                                           autoFocus
@@ -582,11 +582,7 @@ const TooDooOverlay = () => {
               <button className="button" onClick={handleSignIn} disabled={signingIn}>
                 {signingIn ? 'Signing in...' : 'Sign In'}
               </button>
-              <button
-                data-testid="btn-signin-skip"
-                className="small-button"
-                onClick={() => setShowSignIn(false)}
-              >
+              <button data-testid="btn-signin-skip" className="small-button" onClick={() => setShowSignIn(false)}>
                 Skip
               </button>
             </div>

@@ -14,8 +14,9 @@ TooDoo is an always-on-top Electron desktop overlay for task management with glo
 npm run dev              # Vite + Electron
 npm run build            # tsc + vite build
 npm run electron:build   # full production build
-npm run lint             # ESLint
+npm run lint             # ESLint (type-aware; mobile/ lints separately)
 npm run format           # Prettier write
+npm run typecheck        # tsc -b (app + node + tests projects)
 npm run test             # Vitest
 npx vitest run tests/main/categories.test.ts  # single test
 ```
@@ -63,7 +64,7 @@ Alt+Shift+ `Q`/`W`/`E`/`R`/`T` → quick-add scorching/hot/warm/cool/timed. Alt+
 
 ## Testing
 
-Vitest, node env. Tests in `tests/main/`. Global Electron/fs/crypto mocks in `tests/setup.ts`. `mockReset: true` between tests. Console silenced unless `DEBUG` is set.
+Vitest with two projects: `main` (node env, `tests/main/`) and `renderer` (jsdom, `tests/renderer/`). Global Electron/fs/crypto mocks in `tests/setup.ts`. `mockReset: true` between tests. Console silenced unless `DEBUG` is set. Tests are type-checked via `tsconfig.test.json` (part of `tsc -b`). CI (`.github/workflows/ci.yml`) runs lint, format check, typecheck, and tests.
 
 ## Style
 

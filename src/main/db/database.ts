@@ -20,7 +20,7 @@ const queue = createQueue()
 
 // --- Database Initialization ---
 
-export const initDatabase = async (): Promise<void> => {
+export const initDatabase = (): void => {
   const dataDir = path.join(app.getPath('userData'), 'data')
   ensureDir(dataDir)
   taskOps.init(dataDir)

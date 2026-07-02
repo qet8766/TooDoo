@@ -39,7 +39,7 @@ import { readJsonFile, writeJsonFile } from '@main/db/store'
 beforeEach(() => {
   vi.clearAllMocks()
   // Re-establish createClient mock (mockReset clears it between tests)
-  vi.mocked(createClient).mockReturnValue({ auth: mockAuth } as ReturnType<typeof createClient>)
+  vi.mocked(createClient).mockReturnValue({ auth: mockAuth } as unknown as ReturnType<typeof createClient>)
   vi.mocked(readJsonFile).mockReturnValue(null)
   initSupabase('/tmp/test')
 })

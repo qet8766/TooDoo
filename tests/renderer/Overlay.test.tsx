@@ -24,6 +24,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   title: overrides.title ?? 'Test task',
   description: overrides.description,
   category: overrides.category ?? 'hot',
+  isDone: overrides.isDone ?? false,
   sortOrder: overrides.sortOrder ?? 'a0',
   createdAt: overrides.createdAt ?? 1_700_000_000_000,
   updatedAt: overrides.updatedAt ?? 1_700_000_000_000,
@@ -37,26 +38,29 @@ const makeMockToodoo = (tasks: Task[]): MockToodoo => {
   const listeners = new Set<(tasks: Task[]) => void>()
   return {
     tasks: {
-      list: vi.fn(async () => tasks),
+      list: vi.fn(() => Promise.resolve(tasks)),
       add: vi.fn(),
-      update: vi.fn(async ({ id, ...patch }) => ({
-        success: true,
-        data: { ...tasks.find((t) => t.id === id)!, ...patch },
-      })),
-      remove: vi.fn(async () => ({ success: true, data: { id: 'task-1' } })),
-      reorder: vi.fn(async () => ({ success: true })),
+      update: vi.fn((input: Partial<Task> & { id: string }) => {
+        const { id, ...patch } = input
+        return Promise.resolve({
+          success: true,
+          data: { ...tasks.find((t) => t.id === id)!, ...patch },
+        })
+      }),
+      remove: vi.fn(() => Promise.resolve({ success: true, data: { id: 'task-1' } })),
+      reorder: vi.fn(() => Promise.resolve({ success: true })),
       addNote: vi.fn(),
       updateNote: vi.fn(),
       removeNote: vi.fn(),
     },
     notes: {} as MockToodoo['notes'],
     auth: {
-      getStatus: vi.fn(async () => ({ isSignedIn: true, email: 'test@example.com' })),
+      getStatus: vi.fn(() => Promise.resolve({ isSignedIn: true, email: 'test@example.com' })),
       signIn: vi.fn(),
       signOut: vi.fn(),
     },
     sync: {
-      getStatus: vi.fn(async () => ({ status: 'synced' })),
+      getStatus: vi.fn(() => Promise.resolve({ status: 'synced' })),
     },
     onTasksChanged: vi.fn((fn: (tasks: Task[]) => void) => {
       listeners.add(fn)
