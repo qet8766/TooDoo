@@ -14,6 +14,7 @@ import type { StackScreenProps } from '@react-navigation/stack'
 import type { TaskCategory } from '@shared/types'
 import type { RootStackParamList } from '../../app/RootNavigator'
 import { useTaskStore } from '../../stores/taskStore'
+import { useToastStore } from '../../stores/toastStore'
 import { handleResult } from '../../lib/showError'
 import { CategoryPicker } from '../../components/tasks/CategoryPicker'
 import { colors } from '../../theme/colors'
@@ -56,19 +57,21 @@ export function QuickAddScreen({ navigation, route }: Props) {
     if (!trimmed || isSubmitting) return
     setIsSubmitting(true)
 
-    const res = await useTaskStore.getState().addTask({
-      title: trimmed,
-      description: description.trim() || undefined,
-      category,
-      scheduledDate: scheduledDate ? scheduledDate.getTime() : undefined,
-      scheduledTime: scheduledDate && scheduledTime ? scheduledTime : undefined,
-    })
-
-    if (handleResult(res) === null) {
+    try {
+      const res = await useTaskStore.getState().addTask({
+        title: trimmed,
+        description: description.trim() || undefined,
+        category,
+        scheduledDate: scheduledDate ? scheduledDate.getTime() : undefined,
+        scheduledTime: scheduledDate && scheduledTime ? scheduledTime : undefined,
+      })
+      if (handleResult(res) === null) return
+      navigation.goBack()
+    } catch (err) {
+      useToastStore.getState().show(err instanceof Error ? err.message : String(err))
+    } finally {
       setIsSubmitting(false)
-      return
     }
-    navigation.goBack()
   }
 
   const formatDate = (d: Date) =>

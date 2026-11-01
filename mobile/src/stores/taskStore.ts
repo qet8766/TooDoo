@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { v4 as uuid } from 'uuid'
 import { generateKeyBetween } from 'fractional-indexing'
 import type { Task, TaskCategory, ProjectNote } from '@shared/types'
 import { type Result, ok, fail } from '@shared/result'
@@ -7,6 +6,7 @@ import { validateTaskFields, validateProjectNoteFields, sanitizeTasks } from '@s
 import { readJson, writeJson } from '../data/persistence'
 import { createQueue } from '../data/queue'
 import { pushEntity } from '../data/sync'
+import { newId } from '../lib/id'
 
 const TASKS_KEY = '@toodoo/tasks'
 
@@ -79,7 +79,7 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => {
         if (!fieldRes.success) return fail(fieldRes.error)
 
         const { tasks } = get()
-        const id = uuid()
+        const id = newId()
         const now = Date.now()
         const sortKey = generateKeyBetween(null, firstSortKey(tasks, p.category))
 
@@ -183,7 +183,7 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => {
 
         const now = Date.now()
         const note: ProjectNote = {
-          id: uuid(),
+          id: newId(),
           taskId,
           content: content.trim(),
           createdAt: now,

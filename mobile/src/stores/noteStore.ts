@@ -1,11 +1,11 @@
 import { create } from 'zustand'
-import { v4 as uuid } from 'uuid'
 import type { Note } from '@shared/types'
 import { type Result, ok, fail } from '@shared/result'
 import { validateNoteFields, sanitizeNotes } from '@shared/validation'
 import { readJson, writeJson } from '../data/persistence'
 import { createQueue } from '../data/queue'
 import { pushEntity } from '../data/sync'
+import { newId } from '../lib/id'
 
 const NOTES_KEY = '@toodoo/notes'
 
@@ -47,7 +47,7 @@ export const useNoteStore = create<NoteState & NoteActions>((set, get) => {
         const { notes } = get()
         const now = Date.now()
         const note: Note = {
-          id: uuid(),
+          id: newId(),
           title: p.title.trim(),
           content: p.content.trim(),
           createdAt: now,
